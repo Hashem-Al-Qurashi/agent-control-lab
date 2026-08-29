@@ -41,8 +41,9 @@ migrate:
 from apps.ledger.db import run_migrations as l; \
 from apps.control.db import run_migrations as c; \
 from apps.crm.db import run_migrations as m; \
+from apps.entitlements.db import run_migrations as e; \
 from oracle.quiescence import grant_readonly; \
-b(); l(); c(); m(); grant_readonly(); print('schemas ready')"
+b(); l(); c(); m(); e(); grant_readonly(); print('schemas ready')"
 
 test:
 	$(PY) -m pytest tests/ -q

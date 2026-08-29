@@ -1,7 +1,4 @@
-"""Billing's own database. Raw SQL, no ORM.
-
-Connection details are read at call time, never at import.
-"""
+"""Entitlements' own database. Owns grants, never the plan."""
 
 from __future__ import annotations
 
@@ -10,8 +7,8 @@ import pathlib
 from libs.service_common import connect as _connect
 
 MIGRATIONS = pathlib.Path(__file__).parent / "migrations"
-DSN_ENV = "BILLING_DSN"
-DEFAULT_DSN = "postgresql://billing:billing@127.0.0.1:55433/billing"
+DSN_ENV = "ENTITLEMENTS_DSN"
+DEFAULT_DSN = "postgresql://entitlements:entitlements@127.0.0.1:55437/entitlements"
 
 
 def connect():
@@ -26,9 +23,6 @@ def run_migrations() -> None:
 
 
 def truncate_all() -> None:
-    """Verified clean slate. Leftover rows push a sum over the ceiling
-    regardless of concurrency, which is indistinguishable from a real
-    violation."""
     with connect() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE refunds, decision_log, request_log, outbox, plan_changes RESTART IDENTITY")
+        cur.execute("TRUNCATE feature_grants, request_log RESTART IDENTITY")
         conn.commit()

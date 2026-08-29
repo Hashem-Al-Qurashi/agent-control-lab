@@ -67,3 +67,16 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 
 CREATE INDEX IF NOT EXISTS outbox_unapplied_idx ON outbox (id) WHERE applied_at IS NULL;
+
+-- Plan changes. Billing owns the plan; Entitlements owns feature grants. The
+-- split is what makes E1 a cross-service invariant rather than a local one.
+CREATE TABLE IF NOT EXISTS plan_changes (
+    id              BIGSERIAL PRIMARY KEY,
+    case_id         TEXT        NOT NULL,
+    actor_id        TEXT        NOT NULL,
+    idempotency_key TEXT        NOT NULL UNIQUE,
+    plan            TEXT        NOT NULL CHECK (plan IN ('BASIC', 'PRO')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS plan_changes_case_idx ON plan_changes (case_id);

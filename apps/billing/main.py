@@ -141,6 +141,60 @@ def void_refund(refund_id: int) -> dict:
     return _row_to_dict(row)
 
 
+class PlanRequest(BaseModel):
+    case_id: str
+    plan: str
+    idempotency_key: str
+
+
+@app.post("/plans", status_code=201)
+def change_plan(req: PlanRequest):
+    """Billing owns the plan. Entitlements does not, and must therefore consult
+    something outside itself to know whether a grant is permitted."""
+    actor = current_actor()
+    _checkpoint("billing.plan.after_read_before_decide")
+
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, case_id, actor_id, plan FROM plan_changes "
+            "WHERE idempotency_key = %s",
+            (req.idempotency_key,),
+        )
+        existing = cur.fetchone()
+        if existing is not None:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(
+                status_code=200,
+                content={"id": existing[0], "case_id": existing[1],
+                         "actor_id": existing[2], "plan": existing[3]},
+            )
+
+        cur.execute(
+            "INSERT INTO plan_changes (case_id, actor_id, idempotency_key, plan) "
+            "VALUES (%s, %s, %s, %s) RETURNING id, case_id, actor_id, plan",
+            (req.case_id, actor, req.idempotency_key, req.plan),
+        )
+        row = cur.fetchone()
+        conn.commit()
+
+    _checkpoint("billing.plan.after_commit_before_ack")
+    return {"id": row[0], "case_id": row[1], "actor_id": row[2], "plan": row[3]}
+
+
+@app.get("/plans")
+def current_plan(case_id: str = Query(...)) -> dict:
+    """The most recent plan change is the current plan."""
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT plan FROM plan_changes WHERE case_id = %s ORDER BY id DESC "
+            "LIMIT 1",
+            (case_id,),
+        )
+        row = cur.fetchone()
+    return {"case_id": case_id, "plan": row[0] if row else None}
+
+
 @app.get("/refunds")
 def list_refunds(case_id: str = Query(...)) -> dict:
     with connect() as conn, conn.cursor() as cur:

@@ -89,3 +89,24 @@ services:
       retries: 20
     tmpfs:
       - /var/lib/postgresql/data
+
+  # Entitlements owns feature grants; Billing owns the plan. The invariant
+  # "every granted feature is permitted by the current plan" therefore spans two
+  # independently-owned systems -- the same shape as the compensation ceiling,
+  # with no arithmetic in it at all.
+  entitlements-db:
+    image: postgres:16-alpine
+    container_name: acl-entitlements-db
+    environment:
+      POSTGRES_USER: entitlements
+      POSTGRES_PASSWORD: entitlements
+      POSTGRES_DB: entitlements
+    ports:
+      - "127.0.0.1:55437:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U entitlements -d entitlements"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
