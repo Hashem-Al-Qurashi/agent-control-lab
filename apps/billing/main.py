@@ -17,6 +17,8 @@ would fail open, and the whole design is fail-closed.
 
 from __future__ import annotations
 
+import os
+
 from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -136,3 +138,13 @@ def list_refunds(case_id: str = Query(...)) -> dict:
         )
         total = cur.fetchone()[0]
     return {"refunds": rows, "total_committed": str(total)}
+
+
+@app.get("/health")
+def health() -> dict:
+    """Reports the serving process id.
+
+    Used to prove requests were handled by distinct worker processes. A
+    configured worker count is an intention; distinct pids are evidence.
+    """
+    return {"service": SERVICE, "pid": os.getpid()}
