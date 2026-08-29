@@ -168,3 +168,46 @@ def clean_state(stack):
     crm_truncate()
     yield stack
     httpx.post(f"{stack['coordinator']}/reset", timeout=10.0)
+
+
+@pytest.fixture(scope="session")
+def natural_stack():
+    """Mode B stack: services with the barrier disabled.
+
+    A separate stack rather than reusing Mode A's. The barrier fails closed when
+    no schedule is declared -- correctly -- so Mode A's services cannot serve
+    unscheduled traffic. Adding a permissive "release everything" schedule would
+    contradict the fail-closed design every Mode A result depends on.
+    """
+    _assert_no_orphaned_services()
+    billing_migrations()
+    ledger_migrations()
+    grant_readonly()
+
+    env = {"BARRIER_ENABLED": "0", "ACL_ENFORCE_POLICY": "0"}
+    billing_port, ledger_port = _free_port(), _free_port()
+    procs = [
+        _spawn("apps.billing.main:app", billing_port, env, workers=4),
+        _spawn("apps.ledger.main:app", ledger_port, env, workers=4),
+    ]
+
+    probe = {"X-Actor-Id": "PROBE", "X-Schedule-Id": "PROBE"}
+    try:
+        for port in (billing_port, ledger_port):
+            _wait_for(f"http://127.0.0.1:{port}/health", probe)
+    except RuntimeError:  # pragma: no cover
+        for p in procs:
+            p.send_signal(signal.SIGTERM)
+        raise
+
+    yield {
+        "billing": f"http://127.0.0.1:{billing_port}",
+        "ledger": f"http://127.0.0.1:{ledger_port}",
+    }
+
+    for p in procs:
+        p.send_signal(signal.SIGTERM)
+        try:
+            p.wait(timeout=15)
+        except subprocess.TimeoutExpired:  # pragma: no cover
+            p.kill()
