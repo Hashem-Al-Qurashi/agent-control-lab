@@ -1,0 +1,51 @@
+# P2 -- concurrent read-check-write race. MUST PRODUCE A VIOLATION.
+#
+# Both actors are released to read before either is allowed to commit, so both
+# observe zero committed compensation. Each then makes a locally correct
+# decision: A's 600 fits under 1000, and B's 500 fits under 1000. Both are
+# right about what they saw. The aggregate is 1100.
+#
+# Every individual action here is authorised, idempotent, locally valid and
+# successfully executed. The failure is not in any one of them.
+#
+# This is a POSITIVE CONTROL, not a discovery. Read-then-write across two
+# uncoordinated systems is textbook, and Stage 0 claims nothing from it. Its job
+# is to prove the rig can deterministically produce a known violation. If P2
+# does NOT violate, the rig is broken -- barrier placement, actor scoping,
+# server worker count, oracle, or isolation level -- and no conclusion about the
+# thesis may be drawn.
+#
+# Step order is load-bearing. B's after_reads checkpoint is declared before A's
+# so that B has genuinely finished reading before A is released to commit;
+# otherwise the cascade would release A while B was still reading, and B would
+# observe A's commit rather than a stale zero.
+
+schedule_id: P2
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: p2-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: p2-b
+
+expect:
+  verdict: VIOLATION
+  committed_total: "1100.00"
+  realized_overage: "100.00"
+
+steps:
+  - [A, agent.before_reads]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  - [B, ledger.after_read_before_decide]
+  - [B, ledger.after_commit_before_ack]

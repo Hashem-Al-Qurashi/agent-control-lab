@@ -23,9 +23,9 @@ leak between them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Protocol
+from typing import Callable, Protocol
 
 
 class ServiceClient(Protocol):
@@ -36,10 +36,17 @@ class ServiceClient(Protocol):
     ) -> dict: ...
 
 
+def _no_checkpoint(name: str) -> None:
+    """Default: the policy does not participate in any schedule."""
+
+
 @dataclass(frozen=True)
 class Clients:
     billing: ServiceClient
     ledger: ServiceClient
+    # Injected so the policy stays pure and unit-testable with fakes. The
+    # barrier is a property of the experiment, not of the agent's logic.
+    checkpoint: Callable[[str], None] = field(default=_no_checkpoint)
 
 
 @dataclass(frozen=True)
@@ -65,7 +72,19 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
         # Guess nothing. An agent that invents an action would fabricate the run.
         raise ValueError(f"unknown action {config.action!r}")
 
+    # Before any observation. Without this the schedule can order writes but
+    # not reads, so an actor's view of the world is whatever it happened to see
+    # -- which makes a "sequential" control not actually sequential.
+    clients.checkpoint("agent.before_reads")
+
     observed = observed_compensation(case_id, clients)
+
+    # The read-check-write window. Everything relevant has been observed and
+    # the decision is made from it, but nothing has been written yet. This is
+    # where a concurrent actor can commit and render the observation stale --
+    # the gap the whole experiment is about, and it lives in the agent, not in
+    # any one service.
+    clients.checkpoint("agent.after_reads_before_act")
 
     # <= not <. The ceiling is inclusive: spending exactly the authorised amount
     # is correct, and an off-by-one here would look exactly like a violation.

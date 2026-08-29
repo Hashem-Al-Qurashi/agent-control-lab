@@ -1,14 +1,15 @@
 # P1 -- sequential negative control. MUST PASS.
 #
-# Fully sequential, fully propagated: A completes its refund entirely before B
-# begins its credit. B therefore observes A's committed 600 and correctly
-# decides its 300 still fits under the 1000 ceiling.
+# A completes its refund entirely -- read, decide, commit, acknowledge -- before
+# B is allowed to begin reading. B therefore observes A's committed 600 and
+# correctly decides its 300 still fits under the 1000 ceiling.
 #
-# This is the control that proves the oracle is not trigger-happy. If P1 reports
-# a violation, the instrument is wrong, not the system.
+# Genuinely sequential, not merely sequential in write order: B's reads are
+# gated too. Without gating the reads, B's view would be whatever it happened to
+# see, and the control would not control anything.
 #
-# It also fails closed if it passes while any waiter is still parked -- otherwise
-# "pass" could mean the second actor never ran at all.
+# This proves the oracle is not trigger-happy. If P1 reports a violation, the
+# instrument is wrong, not the system.
 
 schedule_id: P1
 authorized_compensation: "1000.00"
@@ -30,7 +31,11 @@ expect:
   committed_total: "900.00"
 
 steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
   - [A, billing.after_read_before_decide]
   - [A, billing.after_commit_before_ack]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
   - [B, ledger.after_read_before_decide]
   - [B, ledger.after_commit_before_ack]

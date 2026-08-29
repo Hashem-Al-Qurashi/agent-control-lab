@@ -80,6 +80,7 @@ def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> R
                     "idempotency_key": actor["idempotency_key"],
                     "authorized_compensation": spec["authorized_compensation"],
                     "billing_url": stack["billing"],
+                    "coordinator_url": coordinator,
                     "ledger_url": stack["ledger"],
                 }
             )

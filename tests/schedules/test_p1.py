@@ -41,8 +41,12 @@ def test_p1_released_every_declared_step(clean_state):
     outcome = run_schedule("P1", clean_state)
 
     assert outcome.release_order == [
+        ["A", "agent.before_reads", 0],
+        ["A", "agent.after_reads_before_act", 0],
         ["A", "billing.after_read_before_decide", 0],
         ["A", "billing.after_commit_before_ack", 0],
+        ["B", "agent.before_reads", 0],
+        ["B", "agent.after_reads_before_act", 0],
         ["B", "ledger.after_read_before_decide", 0],
         ["B", "ledger.after_commit_before_ack", 0],
     ]

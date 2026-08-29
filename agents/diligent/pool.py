@@ -42,8 +42,15 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             from libs.barrier.middleware import actor_identity
 
             spec = payload
+            from libs.barrier.client import BarrierClient
+
             billing = HttpServiceClient(spec["billing_url"], "refunds")
             ledger = HttpServiceClient(spec["ledger_url"], "credits")
+            barrier = (
+                BarrierClient(spec["coordinator_url"])
+                if spec.get("coordinator_url")
+                else None
+            )
             config = CaseConfig(
                 case_id=spec["case_id"],
                 actor_id=spec["actor_id"],
@@ -55,13 +62,22 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             )
             try:
                 with actor_identity(spec["actor_id"], spec["schedule_id"]):
-                    run_case(spec["case_id"], config, Clients(billing, ledger))
+                    clients = Clients(
+                        billing,
+                        ledger,
+                        checkpoint=(
+                            barrier.checkpoint if barrier else (lambda _n: None)
+                        ),
+                    )
+                    run_case(spec["case_id"], config, clients)
                 outbox.put(("ok", spec["actor_id"], None))
             except Exception as exc:  # surfaced, never swallowed
                 outbox.put(("error", spec["actor_id"], f"{type(exc).__name__}: {exc}"))
             finally:
                 billing.close()
                 ledger.close()
+                if barrier is not None:
+                    barrier.close()
         else:  # pragma: no cover - defensive
             outbox.put(("error", f"unknown job {kind!r}"))
 
