@@ -63,6 +63,7 @@ def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> R
             "steps": [list(step) for step in spec["steps"]],
             "timeout_seconds": spec.get("timeout_seconds", 30.0),
             "lease_ttl_seconds": spec.get("lease_ttl_seconds", 30.0),
+            "faults": [list(f) for f in spec.get("faults", [])],
         },
         timeout=10.0,
     ).raise_for_status()
@@ -78,6 +79,7 @@ def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> R
                     "action": actor["action"],
                     "amount": actor["amount"],
                     "idempotency_key": actor["idempotency_key"],
+                    "retry_on_failure": actor.get("retry_on_failure", False),
                     "authorized_compensation": spec["authorized_compensation"],
                     "billing_url": stack["billing"],
                     "coordinator_url": coordinator,

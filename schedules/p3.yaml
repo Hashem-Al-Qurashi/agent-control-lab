@@ -1,0 +1,58 @@
+# P3 -- lost acknowledgement, then an explicit keyed retry. MUST PASS.
+#
+# A commits its refund. The acknowledgement is dropped at
+# billing.after_commit_before_ack, so the work is durable but A is told it
+# failed. A then retries with the SAME idempotency key and the service returns
+# the original row rather than creating a second one.
+#
+# This is the primary anti-strawman control. It proves the baseline is not
+# rigged to fail everywhere: local mechanisms work exactly where they are
+# supposed to. It also shows that idempotency -- which protects one logical
+# operation from being applied twice -- is ORTHOGONAL to the aggregate invariant,
+# which is breached by two DIFFERENT valid operations. Idempotency is not a fix
+# for P2, and P3 is what demonstrates that rather than asserting it.
+#
+# The retry is an explicit, keyed decision by the agent. It is never automatic:
+# an automatic resend on a non-idempotent endpoint is indistinguishable from two
+# agents racing.
+#
+# billing.after_read_before_decide is hit twice -- once for the original attempt
+# and once for the retry -- which is exactly why the barrier key carries an
+# occurrence index. A three-part key would consume the first hit's release token
+# or deadlock here.
+#
+# after_commit_before_ack fires only ONCE. On the retry there is no commit: the
+# service recognises the idempotency key and returns the existing row before
+# reaching that checkpoint. That asymmetry is the mechanism working, and the
+# schedule records it rather than asserting a checkpoint that correctly never
+# fires.
+
+schedule_id: P3
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: p3-a
+    retry_on_failure: true
+
+expect:
+  verdict: CLEAN
+  committed_total: "600.00"
+  refund_rows: 1
+
+faults:
+  # Drop the response after the transaction has committed.
+  - [A, billing.after_commit_before_ack, 0]
+
+steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]   # occurrence 0 -- faulted, ACK dropped
+  - [A, billing.after_read_before_decide]  # occurrence 1 -- the retry
+  # No second after_commit_before_ack: the retry is an idempotent replay, so the
+  # service returns the existing row without committing again.

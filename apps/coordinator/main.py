@@ -33,6 +33,7 @@ _barrier: Barrier | None = None
 _timeout: float = 30.0
 _lease_ttl: float = 30.0
 _reaper: Reaper | None = None
+_faults: set = set()
 
 
 class DeclareRequest(BaseModel):
@@ -40,6 +41,9 @@ class DeclareRequest(BaseModel):
     steps: list[tuple[str, str]]
     timeout_seconds: float = 30.0
     lease_ttl_seconds: float = 30.0
+    # Checkpoints that release the schedule but return a fault to the
+    # caller. Models a durable effect whose acknowledgement is lost.
+    faults: list[tuple[str, str, int]] = []
 
 
 class AwaitRequest(BaseModel):
@@ -52,7 +56,7 @@ class HeartbeatRequest(BaseModel):
 
 
 def reset_state() -> None:
-    global _schedule, _barrier, _timeout, _lease_ttl, _reaper
+    global _schedule, _barrier, _timeout, _lease_ttl, _reaper, _faults
     reaper, _reaper = _reaper, None
     if reaper is not None:
         reaper.stop()
@@ -61,6 +65,7 @@ def reset_state() -> None:
         _barrier = None
         _timeout = 30.0
         _lease_ttl = 30.0
+        _faults.clear()
 
 
 def _abort(reason: str) -> None:
@@ -70,13 +75,14 @@ def _abort(reason: str) -> None:
 
 @app.post("/declare")
 def declare(req: DeclareRequest) -> dict:
-    global _schedule, _barrier, _timeout, _lease_ttl, _reaper
+    global _schedule, _barrier, _timeout, _lease_ttl, _reaper, _faults
     reset_state()
     with _lock:
         _schedule = Schedule(req.schedule_id, [tuple(s) for s in req.steps])
         _barrier = Barrier(_schedule)
         _timeout = req.timeout_seconds
         _lease_ttl = req.lease_ttl_seconds
+        _faults = {tuple(f) for f in req.faults}
         barrier = _barrier
     # Nothing may depend on someone remembering to call reap().
     _reaper = Reaper(barrier, interval=min(1.0, req.lease_ttl_seconds / 3))
@@ -159,6 +165,17 @@ def await_checkpoint(
     except BarrierTimeout as exc:
         _abort(str(exc))
         raise HTTPException(status_code=504, detail=str(exc)) from exc
+
+    # The schedule has already advanced -- the effect is durable. Only the
+    # acknowledgement is withheld, which is exactly the ambiguity being modelled.
+    if (x_actor_id, req.checkpoint, occurrence) in _faults:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"injected fault: acknowledgement dropped at {req.checkpoint} "
+                f"occurrence {occurrence}"
+            ),
+        )
 
     return {"occurrence": occurrence, "checkpoint": req.checkpoint}
 

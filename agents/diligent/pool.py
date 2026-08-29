@@ -59,6 +59,7 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                 amount=Decimal(spec["amount"]),
                 idempotency_key=spec["idempotency_key"],
                 authorized_compensation=Decimal(spec["authorized_compensation"]),
+                retry_on_failure=bool(spec.get("retry_on_failure", False)),
             )
             try:
                 with actor_identity(spec["actor_id"], spec["schedule_id"]):

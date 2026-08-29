@@ -58,6 +58,9 @@ class CaseConfig:
     amount: Decimal
     idempotency_key: str
     authorized_compensation: Decimal
+    # An explicit, keyed decision -- never automatic. An automatic resend on
+    # a non-idempotent endpoint is indistinguishable from two agents racing.
+    retry_on_failure: bool = False
 
 
 def observed_compensation(case_id: str, clients: Clients) -> Decimal:
@@ -92,4 +95,12 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
         return
 
     target = clients.billing if config.action == "refund" else clients.ledger
-    target.create(case_id, config.amount, config.idempotency_key)
+    try:
+        target.create(case_id, config.amount, config.idempotency_key)
+    except Exception:
+        if not config.retry_on_failure:
+            raise
+        # Outcome ambiguous: the effect may or may not be durable. Retrying with
+        # the SAME idempotency key is the correct response -- it either completes
+        # the operation or returns the one already recorded, never a second one.
+        target.create(case_id, config.amount, config.idempotency_key)
