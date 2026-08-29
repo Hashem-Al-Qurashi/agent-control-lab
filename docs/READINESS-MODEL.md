@@ -49,7 +49,9 @@ observe, and wrong anyway.
 |---|---|
 | Identity is signed, externally issued, unforgeable | tampered and wrong-key tokens rejected |
 | Invalid credentials are rejected, never degraded to anonymous | a caller that silently becomes "someone" is how authz gets bypassed |
-| Tokens expire and rotate | **absent here** — ADR-005, T1 |
+| Tokens expire | `test_an_expired_token_is_refused_at_the_service_boundary` — enforced at the boundary, not only in the library |
+| A credential minted without an expiry is refused | fail closed: verifying `exp` only when present accepts an immortal token forever |
+| Keys rotate; replay inside the window is stopped | **absent here** — ADR-005, T1 |
 
 ## 4. Authorization
 

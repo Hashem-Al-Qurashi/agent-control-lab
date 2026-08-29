@@ -150,3 +150,38 @@ def test_a_refused_abuse_attempt_writes_nothing_anywhere(client):
     assert listing["refunds"] == []
     assert Decimal(listing["total_committed"]) == Decimal("0")
     assert client.get("/events", headers=_headers()).json()["pending"] == 0
+
+
+def test_an_expired_token_is_refused_at_the_service_boundary(client):
+    """The lib rejecting it is not the same as the service rejecting it.
+
+    A boundary that verifies the signature but not the lifetime accepts a
+    leaked credential forever, and every unit test on the token library stays
+    green while it happens.
+    """
+    expired = {
+        "X-Actor-Id": "A",
+        "X-Schedule-Id": "ABUSE",
+        "Authorization": f"Bearer {issue_token('A', ['refund:create'], 'acme', ttl_seconds=-1)}",
+        "X-Tenant-Id": "acme",
+    }
+
+    r = _post(client, "100.00", headers=expired)
+
+    assert r.status_code == 401, r.text
+    listing = client.get(
+        "/refunds", params={"case_id": "c1"}, headers=_headers()
+    ).json()["refunds"]
+    assert listing == [], "an expired credential wrote a refund"
+
+
+def test_an_expired_token_is_a_401_not_a_500(client):
+    """An abuse attempt must not be indistinguishable from an outage."""
+    expired = {
+        "X-Actor-Id": "A",
+        "X-Schedule-Id": "ABUSE",
+        "Authorization": f"Bearer {issue_token('A', ['refund:create'], 'acme', ttl_seconds=-1)}",
+        "X-Tenant-Id": "acme",
+    }
+
+    assert _post(client, "100.00", headers=expired).status_code < 500

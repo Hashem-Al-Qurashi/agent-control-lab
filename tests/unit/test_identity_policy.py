@@ -15,8 +15,10 @@ The second matters most. An LLM that decides its own permissions has no
 permissions. The service asks the policy; the agent never does.
 """
 
+import os
 from decimal import Decimal
 
+import jwt
 import pytest
 
 from libs.identity import (
@@ -169,3 +171,51 @@ def test_policy_does_not_know_about_the_aggregate_ceiling():
             f"policy LOGIC references {forbidden!r} -- per-action authorization "
             "must not know about the aggregate, or the finding becomes circular"
         )
+
+
+# --- token lifetime ------------------------------------------------------
+#
+# ADR-005 substituted signed tokens for an OIDC provider and recorded token
+# lifetime as the operational surface it did not provide. That left T1 with a
+# real residual -- a leaked token valid forever -- and readiness domain 3 with
+# an honest "absent". These close it.
+
+
+def test_a_token_carries_an_expiry():
+    """An immortal credential is one leak away from permanent access."""
+    claims = jwt.decode(
+        issue_token("A", ["refund:create"], tenant="t1"),
+        os.environ.get("ACL_TOKEN_SECRET", "agent-control-lab-local-only"),
+        algorithms=["HS256"],
+    )
+
+    assert "exp" in claims and "iat" in claims
+
+
+def test_an_expired_token_is_rejected():
+    token = issue_token("A", ["refund:create"], tenant="t1", ttl_seconds=-1)
+
+    with pytest.raises(InvalidToken):
+        actor_claims(token)
+
+
+def test_a_token_without_an_expiry_is_rejected():
+    """Fail closed on a credential that predates the requirement.
+
+    Verifying `exp` only when present means a token minted without one is
+    accepted forever -- the check would pass by not applying.
+    """
+    immortal = jwt.encode(
+        {"sub": "A", "tenant": "t1", "scopes": []},
+        os.environ.get("ACL_TOKEN_SECRET", "agent-control-lab-local-only"),
+        algorithm="HS256",
+    )
+
+    with pytest.raises(InvalidToken):
+        actor_claims(immortal)
+
+
+def test_a_token_still_inside_its_lifetime_is_accepted():
+    claims = actor_claims(issue_token("A", ["refund:create"], tenant="t1", ttl_seconds=60))
+
+    assert claims.actor_id == "A"

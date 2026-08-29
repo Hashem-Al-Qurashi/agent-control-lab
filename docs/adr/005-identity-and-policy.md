@@ -59,3 +59,31 @@ the module and checking the **logic**, with docstrings stripped. An earlier
 version checked raw source and failed on the module's own explanation of why the
 code must not touch the aggregate. Mutation-verified: adding an aggregate check
 to the policy fails it.
+
+---
+
+## Amendment — 2026-08-29: token lifetime is now enforced
+
+This ADR listed token lifetime among the operational surface it deliberately did
+not provide. That was the wrong side of the line to put it on.
+
+Lifetime is not operational convenience — it is the only thing bounding how long
+a leaked credential works, and leaving it out made T1's residual *"valid
+indefinitely"* while readiness domain 3 read **Absent**. Both were accurate, and
+both were avoidable for about twenty lines.
+
+Tokens now carry `iat` and `exp`, expired tokens are rejected, and **a token
+without `exp` is rejected rather than trusted** — verifying `exp` only when
+present would let a token minted without one be accepted forever, a check that
+passes by not applying. Verified at the service boundary as well as in the
+library, since a boundary that checks the signature and not the lifetime keeps
+every library test green while accepting the leaked credential.
+
+**What is still absent, and stays absent deliberately:** key rotation, discovery,
+refresh, and — the one worth naming — **replay inside the validity window**. There
+is no `jti` ledger, so a credential captured and reused before it expires is
+accepted. That needs shared state across services, which is a real design
+decision and not a twenty-line one. It remains a stated residual in T1 rather
+than a defence this claims to have.
+
+The rest of the ADR stands: no OIDC provider is run.

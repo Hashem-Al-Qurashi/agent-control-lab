@@ -36,7 +36,7 @@ directly, read-only, and imports no service code.
 | **Impact** | Every authorization decision downstream is meaningless |
 | **Control** | Signed token verified against a key the agent does not hold |
 | **Verified by** | `test_a_tampered_token_is_rejected`, `test_a_token_signed_with_another_key_is_rejected` |
-| **Residual** | Token lifetime and rotation are not modelled. A leaked token is valid indefinitely. Real deployments need OIDC — see ADR-005 |
+| **Residual** | Lifetime is now enforced — `test_an_expired_token_is_rejected`, `test_a_token_without_an_expiry_is_rejected`, and rejected at the boundary by `test_an_expired_token_is_refused_at_the_service_boundary`. **Replay inside the window is still possible**: there is no `jti` ledger, so a credential leaked and reused before it expires is accepted. Key rotation and discovery remain absent — ADR-005 |
 
 ### T2 — Agent decides its own permissions
 | | |

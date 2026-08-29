@@ -9,8 +9,6 @@ isolation -- the signature of a guard that is measuring the suite rather than
 the environment.
 """
 
-import pytest
-
 from libs.procguard import ProcessOwnership
 
 
