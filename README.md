@@ -142,6 +142,7 @@ there is an explicit checkpoint.
 | [READINESS-MODEL.md](docs/READINESS-MODEL.md) | Ten domains, each citing what this lab measured — including where it held and still wasn't enough |
 | [RUNBOOKS.md](docs/RUNBOOKS.md) · [SLOS.md](docs/SLOS.md) · [INCIDENT-001.md](docs/INCIDENT-001.md) | Operations: one runbook per alert that can fire, objectives split from zero-tolerance invariants, and a worked incident from this build |
 | [WHITESTONE-ASSESSMENT-SAMPLE.pdf](docs/WHITESTONE-ASSESSMENT-SAMPLE.pdf) | The assessment as a client would receive it — `make assessment-pdf` rebuilds it |
+| [DEMO.md](docs/DEMO.md) | The 10-minute walkthrough, in order, with every command verified |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tempo + Grafana, and the defect where the library was tested and the system was uninstrumented |
 | [ENGINEER-BRIEF.md](docs/ENGINEER-BRIEF.md) | What the next person must know before touching this |
 | [ENTERPRISE-REFERENCE-ARCHITECTURE.md](docs/ENTERPRISE-REFERENCE-ARCHITECTURE.md) | Five planes, what the coordination plane costs, and how to adopt it without adopting this repo |
