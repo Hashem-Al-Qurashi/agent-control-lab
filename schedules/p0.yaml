@@ -1,0 +1,48 @@
+# P0 -- the same race as P2, but the agents have a coordination primitive.
+# MUST PASS.
+#
+# Identical interleaving to P2, identical policy, identical amounts. The only
+# difference is that the agents can consult a control service that sees the
+# aggregate spanning Billing and Ledger.
+#
+# This is what proves the failure in P2 is a property of the INTERFACE THE AGENT
+# WAS GIVEN, not of the agent's diligence. Without P0 the obvious rebuttal
+# lands: "you built a system with no coordinator and then showed it doesn't
+# coordinate". With P0 the answer is that the same diligent policy, handed an
+# interface that can see the aggregate, does not breach the ceiling.
+#
+# One actor is refused. That refusal is a correct outcome, not an error.
+
+schedule_id: P0
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_reservations: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: p0-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: p0-b
+
+expect:
+  verdict: CLEAN
+
+steps:
+  - [A, agent.before_reads]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [A, agent.after_reads_before_act]
+  # Reservation order is pinned. Releasing two actors in a known order does not
+  # determine which reaches the control service first -- release order is not
+  # execution order -- so the winner would otherwise be decided by scheduling
+  # luck.
+  - [A, agent.before_reserve]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # B reserves only after A has committed, so it is refused and declines.
+  - [B, agent.before_reserve]

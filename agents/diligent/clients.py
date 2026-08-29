@@ -63,3 +63,40 @@ class HttpServiceClient:
 
     def close(self) -> None:
         self._client.close()
+
+
+class ReservationClient:
+    """Client for the coordination authority.
+
+    A refusal is a normal outcome, not an error: it means the aggregate would
+    have been breached and the agent should decline. Only transport failures
+    raise.
+    """
+
+    def __init__(self, base_url: str, timeout: float = 60.0) -> None:
+        self._base = base_url.rstrip("/")
+        self._client = httpx.Client(
+            timeout=timeout, transport=httpx.HTTPTransport(retries=0)
+        )
+
+    def reserve(self, case_id: str, amount, idempotency_key: str, authorized) -> bool:
+        response = self._client.post(
+            f"{self._base}/reservations",
+            json={
+                "case_id": case_id,
+                "amount": str(amount),
+                "idempotency_key": idempotency_key,
+                "authorized_compensation": str(authorized),
+            },
+            headers=outbound_headers(),
+        )
+        if response.status_code == 409:
+            return False  # refused: the aggregate would be breached
+        if response.status_code not in (200, 201):
+            raise ServiceCallFailed(
+                f"reservation failed ({response.status_code}): {response.text}"
+            )
+        return True
+
+    def close(self) -> None:
+        self._client.close()

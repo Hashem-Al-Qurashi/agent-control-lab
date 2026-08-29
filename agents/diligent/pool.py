@@ -37,7 +37,7 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             # unpicklable has to cross the process boundary.
             from decimal import Decimal
 
-            from agents.diligent.clients import HttpServiceClient
+            from agents.diligent.clients import HttpServiceClient, ReservationClient
             from agents.diligent.policy import CaseConfig, Clients, run_case
             from libs.barrier.middleware import actor_identity
 
@@ -49,6 +49,11 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             barrier = (
                 BarrierClient(spec["coordinator_url"])
                 if spec.get("coordinator_url")
+                else None
+            )
+            control = (
+                ReservationClient(spec["control_url"])
+                if spec.get("control_url")
                 else None
             )
             config = CaseConfig(
@@ -69,6 +74,7 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                         checkpoint=(
                             barrier.checkpoint if barrier else (lambda _n: None)
                         ),
+                        **({"reserve": control.reserve} if control else {}),
                     )
                     run_case(spec["case_id"], config, clients)
                 outbox.put(("ok", spec["actor_id"], None))
@@ -79,6 +85,8 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                 ledger.close()
                 if barrier is not None:
                     barrier.close()
+                if control is not None:
+                    control.close()
         else:  # pragma: no cover - defensive
             outbox.put(("error", f"unknown job {kind!r}"))
 

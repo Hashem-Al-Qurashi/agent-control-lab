@@ -83,6 +83,9 @@ def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> R
                     "authorized_compensation": spec["authorized_compensation"],
                     "billing_url": stack["billing"],
                     "coordinator_url": coordinator,
+                    "control_url": (
+                        stack.get("control") if spec.get("use_reservations") else None
+                    ),
                     "ledger_url": stack["ledger"],
                 }
             )

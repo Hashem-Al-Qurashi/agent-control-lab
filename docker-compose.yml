@@ -46,3 +46,26 @@ services:
       retries: 20
     tmpfs:
       - /var/lib/postgresql/data
+
+  # The coordination authority P0 introduces. It owns the compensation budget
+  # across Billing and Ledger -- the thing neither of them can see.
+  #
+  # It has its own store deliberately. Putting the ceiling inside Billing would
+  # make Billing authoritative for the aggregate and collapse the experiment
+  # into a weaker single-system one.
+  control-db:
+    image: postgres:16-alpine
+    container_name: acl-control-db
+    environment:
+      POSTGRES_USER: control
+      POSTGRES_PASSWORD: control
+      POSTGRES_DB: control
+    ports:
+      - "127.0.0.1:55435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control -d control"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data

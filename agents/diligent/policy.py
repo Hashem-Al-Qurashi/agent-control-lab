@@ -40,6 +40,10 @@ def _no_checkpoint(name: str) -> None:
     """Default: the policy does not participate in any schedule."""
 
 
+# reserve is None when no coordination authority exists. That absence is the
+# baseline condition under test, not a degenerate case to paper over.
+
+
 @dataclass(frozen=True)
 class Clients:
     billing: ServiceClient
@@ -47,6 +51,9 @@ class Clients:
     # Injected so the policy stays pure and unit-testable with fakes. The
     # barrier is a property of the experiment, not of the agent's logic.
     checkpoint: Callable[[str], None] = field(default=_no_checkpoint)
+    # The coordination primitive. Absent in the baseline, present in P0 --
+    # and that difference is the whole contrast the experiment rests on.
+    reserve: Callable[..., bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,24 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
     # is correct, and an off-by-one here would look exactly like a violation.
     if observed + config.amount > config.authorized_compensation:
         return
+
+    if clients.reserve is not None:
+        # Ordering the reservation explicitly. Releasing two actors in a known
+        # order does NOT determine which of them reaches the control service
+        # first -- release order is not execution order. Without a checkpoint
+        # here the winner would be decided by scheduling luck, which is exactly
+        # the nondeterminism this harness exists to eliminate.
+        clients.checkpoint("agent.before_reserve")
+
+        # The only difference between P2 and P0: same policy, same interleaving,
+        # but an interface that can see the aggregate.
+        if not clients.reserve(
+            case_id,
+            config.amount,
+            config.idempotency_key,
+            config.authorized_compensation,
+        ):
+            return
 
     target = clients.billing if config.action == "refund" else clients.ledger
     try:

@@ -21,6 +21,8 @@ import httpx
 import pytest
 
 from apps.billing.db import run_migrations as billing_migrations
+from apps.control.db import run_migrations as control_migrations
+from apps.control.db import truncate_all as control_truncate
 from apps.billing.db import truncate_all as billing_truncate
 from apps.ledger.db import run_migrations as ledger_migrations
 from apps.ledger.db import truncate_all as ledger_truncate
@@ -64,6 +66,7 @@ def _spawn(module: str, port: int, env_extra: dict, workers: int) -> subprocess.
 def stack():
     billing_migrations()
     ledger_migrations()
+    control_migrations()
     grant_readonly()
 
     # The oracle proves itself before it is allowed to judge anything.
@@ -81,18 +84,26 @@ def stack():
     billing_port, ledger_port = _free_port(), _free_port()
     billing = _spawn("apps.billing.main:app", billing_port, service_env, workers=4)
     ledger = _spawn("apps.ledger.main:app", ledger_port, service_env, workers=4)
+    # The control service takes no part in any schedule, so it runs without
+    # barrier participation. It is the fix under test, not a racing actor.
+    control_port = _free_port()
+    control = _spawn(
+        "apps.control.main:app", control_port, {"BARRIER_ENABLED": "0"}, workers=4
+    )
 
     probe = {"X-Actor-Id": "PROBE", "X-Schedule-Id": "PROBE"}
     _wait_for(f"http://127.0.0.1:{billing_port}/health", probe)
     _wait_for(f"http://127.0.0.1:{ledger_port}/health", probe)
+    _wait_for(f"http://127.0.0.1:{control_port}/health", probe)
 
     yield {
         "coordinator": coord_url,
         "billing": f"http://127.0.0.1:{billing_port}",
         "ledger": f"http://127.0.0.1:{ledger_port}",
+        "control": f"http://127.0.0.1:{control_port}",
     }
 
-    for proc in (billing, ledger, coord):
+    for proc in (billing, ledger, control, coord):
         proc.send_signal(signal.SIGTERM)
         try:
             proc.wait(timeout=15)
@@ -108,5 +119,6 @@ def clean_state(stack):
     httpx.post(f"{stack['coordinator']}/reset", timeout=10.0)
     billing_truncate()
     ledger_truncate()
+    control_truncate()
     yield stack
     httpx.post(f"{stack['coordinator']}/reset", timeout=10.0)
