@@ -6,6 +6,8 @@ the run rather than releasing a waiter. A default-releasing barrier manufactures
 results.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -133,6 +135,75 @@ def test_abort_dump_names_parked_waiters(client):
     assert "waiters" in body
     assert "release_order" in body
     assert "expects" in body
+
+
+def test_heartbeat_for_unknown_waiter_reports_not_refreshed(client):
+    _declare(client)
+    r = client.post(
+        "/heartbeat",
+        json={"checkpoint": CP_B, "occurrence": 0},
+        headers={"X-Actor-Id": "B", "X-Schedule-Id": "P2"},
+    )
+    assert r.status_code == 200
+    assert r.json()["refreshed"] is False
+
+
+def test_heartbeat_refreshes_a_parked_waiter(client):
+    """Integration over HTTP: B parks, heartbeats, then A releases it."""
+    import threading
+
+    _declare(client)
+    done = threading.Event()
+    result: dict = {}
+
+    def park_b():
+        r = client.post(
+            "/await",
+            json={"checkpoint": CP_B},
+            headers={"X-Actor-Id": "B", "X-Schedule-Id": "P2"},
+        )
+        result["status"] = r.status_code
+        done.set()
+
+    t = threading.Thread(target=park_b, daemon=True)
+    t.start()
+
+    # Wait for B to actually appear as parked before heartbeating it.
+    for _ in range(100):
+        if client.get("/waiters").json()["waiters"]:
+            break
+        time.sleep(0.02)
+    assert client.get("/waiters").json()["waiters"] == [["B", CP_B, 0]]
+
+    hb = client.post(
+        "/heartbeat",
+        json={"checkpoint": CP_B, "occurrence": 0},
+        headers={"X-Actor-Id": "B", "X-Schedule-Id": "P2"},
+    )
+    assert hb.json()["refreshed"] is True
+
+    client.post(
+        "/await",
+        json={"checkpoint": CP_A},
+        headers={"X-Actor-Id": "A", "X-Schedule-Id": "P2"},
+    )
+    assert done.wait(5.0), "parked waiter never returned after release"
+    t.join(timeout=5.0)
+    assert result["status"] == 200
+
+
+def test_declare_accepts_lease_ttl(client):
+    r = client.post(
+        "/declare",
+        json={
+            "schedule_id": "P2",
+            "steps": [["A", CP_A], ["B", CP_B]],
+            "timeout_seconds": 2.0,
+            "lease_ttl_seconds": 3.0,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["lease_ttl_seconds"] == 3.0
 
 
 def test_reset_clears_schedule_and_abort_state(client):
