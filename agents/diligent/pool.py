@@ -11,6 +11,17 @@ Pool size scales with concurrency, not with run count.
 
 Workers pull from a dispatch queue and stay alive across cases, which is exactly
 why agents/diligent/policy.py must pass the purity lint.
+
+Uses the "spawn" start method, so any script constructing an AgentPool must
+guard construction behind `if __name__ == "__main__":`. Fork would not need
+that, but fork also copies the parent's memory -- including anything a previous
+case left behind -- which is the leak this design exists to prevent. Pytest
+satisfies the guard already; standalone scripts do not.
+
+Known cost: the pool is currently created and torn down per schedule run, so
+its lifecycle is paid on every run. That is fine at Stage 0 volumes and is the
+first thing to hoist if a naturalistic mode ever runs thousands of cases. See
+docs/adr/003-scaling-limits.md.
 """
 
 from __future__ import annotations
