@@ -186,9 +186,21 @@ def clean_state(stack):
     httpx.post(f"{stack['coordinator']}/reset", timeout=10.0)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def natural_stack():
     """Mode B stack: services with the barrier disabled.
+
+    Module-scoped, not session-scoped, and the distinction is load-bearing.
+    Only test_mode_b.py uses this, and it collects FIRST -- so at session scope
+    these two multi-worker services stayed alive on the *same* billing and
+    ledger databases through every schedule that followed, starting with P0 and
+    P2. Those are exactly the two schedules ADR-007 recorded as diverging.
+
+    That makes overlap a candidate cause for the anomaly, and it also means the
+    orphan guard alone was not a fix: teaching it to recognise these processes
+    as ours stopped the false alarm without removing the contention. Module
+    scope removes it -- same reuse inside the one module that needs it, released
+    before anything else runs.
 
     A separate stack rather than reusing Mode A's. The barrier fails closed when
     no schedule is declared -- correctly -- so Mode A's services cannot serve
