@@ -22,7 +22,7 @@ import os
 from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from apps.billing.db import connect
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
@@ -45,6 +45,20 @@ class RefundRequest(BaseModel):
     case_id: str
     amount: Decimal
     idempotency_key: str
+
+    @field_validator("amount")
+    @classmethod
+    def _positive(cls, value: Decimal) -> Decimal:
+        """Reject at the boundary, not at the database.
+
+        The CHECK constraint catches this too, but as a 500 -- and an abuse
+        attempt that produces a server error is indistinguishable from a real
+        outage in every dashboard. A negative amount is also not merely
+        malformed: it would INCREASE the budget available to the next actor.
+        """
+        if value <= 0:
+            raise ValueError("amount must be positive")
+        return value
 
 
 def _row_to_dict(row) -> dict:
