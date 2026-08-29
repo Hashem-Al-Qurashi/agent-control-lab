@@ -76,7 +76,18 @@ def outbound_headers() -> dict[str, str]:
         raise MissingActorIdentity(
             "no actor identity bound; outbound calls must forward the inbound actor"
         )
-    return {"X-Actor-Id": actor, "X-Schedule-Id": schedule}
+    headers = {"X-Actor-Id": actor, "X-Schedule-Id": schedule}
+
+    # Trace context travels with identity, always. A trace that fragments at the
+    # first service boundary is not distributed tracing, and identity without
+    # trace context cannot be correlated afterwards. Imported here rather than at
+    # module scope to keep the import graph acyclic.
+    from libs.tracing import current_traceparent
+
+    traceparent = current_traceparent()
+    if traceparent:
+        headers["traceparent"] = traceparent
+    return headers
 
 
 class ActorContextMiddleware:
