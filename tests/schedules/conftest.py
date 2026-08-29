@@ -20,6 +20,12 @@ import time
 import httpx
 import pytest
 
+from libs.procguard import (
+    ProcessOwnership,
+    parent_map,
+    running_service_pids,
+)
+
 from apps.billing.db import run_migrations as billing_migrations
 from apps.control.db import run_migrations as control_migrations
 from apps.control.db import truncate_all as control_truncate
@@ -51,9 +57,12 @@ def _wait_for(url: str, headers=None, timeout=45.0) -> None:
     raise RuntimeError(f"{url} did not become ready")
 
 
+OWNERSHIP = ProcessOwnership()
+
+
 def _spawn(module: str, port: int, env_extra: dict, workers: int) -> subprocess.Popen:
     env = {**os.environ, "PYTHONPATH": str(REPO), **env_extra}
-    return subprocess.Popen(
+    proc = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn", module,
             "--host", "127.0.0.1", "--port", str(port),
@@ -62,10 +71,23 @@ def _spawn(module: str, port: int, env_extra: dict, workers: int) -> subprocess.
         cwd=REPO, env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
+    OWNERSHIP.claim(proc.pid)
+    return proc
+
+
+def _stop(procs) -> None:
+    """Terminate services and stop vouching for their pids."""
+    for proc in procs:
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:  # pragma: no cover
+            proc.kill()
+        OWNERSHIP.release(proc.pid)
 
 
 def _assert_no_orphaned_services() -> None:
-    """Fail loudly if services from a previous run are still alive.
+    """Fail loudly if services from a *previous* run are still alive.
 
     A killed or crashed suite can leave uvicorn workers holding connections to
     the same databases. They do not act on their own, but they compete for
@@ -74,22 +96,21 @@ def _assert_no_orphaned_services() -> None:
     This was observed once: a full-suite run reported P0 and P2 replays
     diverging, and did not reproduce in three subsequent runs after orphaned
     processes were cleared. That is a determinism claim quietly depending on a
-    clean machine -- so the dependency is now checked rather than assumed.
+    clean machine -- so the dependency is checked rather than assumed.
 
-    Failing here is correct. A polluted environment silently produces
-    unreproducible results, which is the exact failure this harness exists to
-    make impossible.
+    The check must exclude processes this session started, or it measures the
+    suite instead of the environment. It did exactly that: `stack` and
+    `natural_stack` are both session-scoped and both spawn services, so the
+    second one built saw the first one's live processes and aborted, erroring 53
+    tests that every one of them passed in isolation.
     """
-    result = subprocess.run(
-        ["pgrep", "-f", "uvicorn apps\\."], capture_output=True, text=True
-    )
-    pids = [p for p in result.stdout.split() if p]
-    if pids:
+    foreign = OWNERSHIP.foreign(running_service_pids(), parent_map())
+    if foreign:
         raise RuntimeError(
-            f"{len(pids)} orphaned service process(es) from a previous run are "
-            f"still alive (pids {pids}). They compete for the same databases and "
-            "make timing-sensitive results unreproducible. Clear them with:\n"
-            "    pkill -f 'uvicorn apps\\.'"
+            f"{len(foreign)} orphaned service process(es) from a previous run "
+            f"are still alive (pids {foreign}). They compete for the same "
+            "databases and make timing-sensitive results unreproducible. "
+            "Clear them with:\n    pkill -f 'uvicorn apps\\.'"
         )
 
 
@@ -148,12 +169,7 @@ def stack():
         "crm": f"http://127.0.0.1:{crm_port}",
     }
 
-    for proc in (billing, ledger, control, crm, coord):
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:  # pragma: no cover
-            proc.kill()
+    _stop((billing, ledger, control, crm, coord))
 
 
 @pytest.fixture()
@@ -205,9 +221,4 @@ def natural_stack():
         "ledger": f"http://127.0.0.1:{ledger_port}",
     }
 
-    for p in procs:
-        p.send_signal(signal.SIGTERM)
-        try:
-            p.wait(timeout=15)
-        except subprocess.TimeoutExpired:  # pragma: no cover
-            p.kill()
+    _stop(procs)
