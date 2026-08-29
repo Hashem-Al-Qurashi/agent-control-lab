@@ -1,0 +1,47 @@
+# S6 -- authorization prevents the action. MUST PASS.
+#
+# The anti-strawman control for the authorization layer. Everywhere else in this
+# repo, authorization permits the action and the aggregate still breaks -- which
+# invites the reading that authorization here is decorative.
+#
+# S6 removes that reading. Both actors request amounts above the 500
+# single-action threshold while holding tokens WITHOUT approval authority. Both
+# are refused by the service. No effect is written, no event is published, and
+# the aggregate is untouched.
+#
+# So per-action authorization demonstrably works. That is precisely why S1
+# matters: authorization working is not the same as the aggregate being correct,
+# and S6 is what makes that sentence a comparison rather than an excuse.
+
+schedule_id: S6
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s6-a
+    scopes: [refund:create]
+  - id: B
+    action: credit
+    amount: "600.00"
+    idempotency_key: s6-b
+    scopes: [credit:create]
+
+expect:
+  verdict: CLEAN
+  committed_total: "0.00"
+
+# Only checkpoints that actually fire. Authorization happens BEFORE the service
+# checkpoint, so a denied action never reaches billing.after_read_before_decide.
+# Declaring it anyway left the pointer waiting on a step that could not arrive:
+# B parked until the barrier timed out, never attempted its action, and the
+# "no events published" assertion passed vacuously. Same class of mistake as
+# declaring a post-commit checkpoint for P3's idempotent replay.
+steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]

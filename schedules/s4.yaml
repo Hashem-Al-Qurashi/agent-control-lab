@@ -1,0 +1,48 @@
+# S4 -- reversed apply order. MUST PASS (same total as S1C).
+#
+# Isolates a confound. A reviewer looking at S1 can reasonably ask whether the
+# breach depends on the ORDER events are folded into the projection rather than
+# on the lag. If order mattered, "the projection was behind" would be an
+# incomplete explanation of S1.
+#
+# Same actors and amounts as S1C, but the projector folds ledger before billing.
+# B still sees the correct total and still declines.
+#
+# Sum is commutative, so this should not matter. Should-not is an assumption
+# until measured, and this harness exists because assumptions about concurrent
+# systems are usually wrong.
+
+schedule_id: S4
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s4-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: s4-b
+  - id: P
+    action: project
+    projection_order: [ledger, billing]
+
+expect:
+  verdict: CLEAN
+  committed_total: "600.00"
+
+steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # Ledger is polled first even though only billing has an event. The declared
+  # order is honoured regardless of which source happens to have work.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]

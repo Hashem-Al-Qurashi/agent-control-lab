@@ -52,12 +52,28 @@ def _already_applied(cur, service: str, source_id: int) -> bool:
 
 
 def apply_pending(
-    sources: dict, checkpoint: Callable[[str], None] = _no_checkpoint
+    sources: dict,
+    checkpoint: Callable[[str], None] = _no_checkpoint,
+    order: list[str] | None = None,
 ) -> int:
     """Apply every unapplied event from each source, in publication order.
 
+    `order` names which sources are folded in and in what sequence, so a
+    schedule can control it. Without that, a reviewer can reasonably ask whether
+    S1's breach depends on apply ORDER rather than on lag -- and "sum is
+    commutative so it cannot matter" is an assumption until measured.
+
+    An unknown source name raises rather than being skipped. Silently ignoring
+    it would drop events and understate the projection, which looks exactly like
+    lag.
+
     Returns the number applied.
     """
+    if order is not None:
+        missing = [name for name in order if name not in sources]
+        if missing:
+            raise KeyError(f"unknown source(s) in order: {missing}")
+        sources = {name: sources[name] for name in order}
     # Before polling anything. Without this the schedule cannot say WHEN the
     # projector looks, so whether it finds events at all depends on how long its
     # imports happened to take. That is a race dressed as a result: on a slower

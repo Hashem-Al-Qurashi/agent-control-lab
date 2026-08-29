@@ -209,3 +209,23 @@ def mark_event_applied(event_id: int) -> dict:
             raise HTTPException(status_code=404, detail="event not found")
         conn.commit()
     return {"id": row[0], "applied": True}
+
+
+@app.post("/events/redeliver")
+def redeliver_events(case_id: str = Query(...)) -> dict:
+    """Offer already-applied events again, as an at-least-once bus would.
+
+    Not a production endpoint. It exists so a schedule can exercise redelivery
+    deterministically rather than hoping a real bus duplicates at the right
+    moment -- the projection's guard against double-counting has to be provable,
+    not assumed.
+    """
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE outbox SET applied_at = NULL WHERE case_id = %s "
+            "AND applied_at IS NOT NULL RETURNING id",
+            (case_id,),
+        )
+        ids = [r[0] for r in cur.fetchall()]
+        conn.commit()
+    return {"redelivered": ids}

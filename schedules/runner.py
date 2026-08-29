@@ -91,6 +91,17 @@ def run_schedule(
     pool = AgentPool(size=len(spec["actors"]))
     try:
         for actor in spec["actors"]:
+            if actor["action"] == "redeliver":
+                pool.dispatch_redeliver(
+                    {
+                        "actor_id": actor["id"],
+                        "schedule_id": spec["schedule_id"],
+                        "case_id": case_id,
+                        "billing_url": stack["billing"],
+                        "ledger_url": stack["ledger"],
+                    }
+                )
+                continue
             if actor["action"] == "project":
                 pool.dispatch_projector(
                     {
@@ -99,6 +110,7 @@ def run_schedule(
                         "coordinator_url": coordinator,
                         "billing_url": stack["billing"],
                         "ledger_url": stack["ledger"],
+                        "projection_order": actor.get("projection_order"),
                     }
                 )
                 continue
@@ -111,6 +123,7 @@ def run_schedule(
                     "amount": actor["amount"],
                     "idempotency_key": actor["idempotency_key"],
                     "retry_on_failure": actor.get("retry_on_failure", False),
+                    "scopes": actor.get("scopes"),
                     "authorized_compensation": spec["authorized_compensation"],
                     "billing_url": stack["billing"],
                     "coordinator_url": coordinator,

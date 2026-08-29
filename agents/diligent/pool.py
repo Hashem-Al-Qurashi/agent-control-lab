@@ -41,6 +41,27 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
         kind, payload = job
         if kind == "echo_pid":
             outbox.put(os.getpid())
+        elif kind == "run_redeliver":
+            # Models an at-least-once bus re-offering applied events, at a moment
+            # the schedule chooses rather than one it hopes for.
+            import httpx as _httpx
+
+            spec = payload
+            try:
+                for url in (spec["billing_url"], spec["ledger_url"]):
+                    _httpx.post(
+                        f"{url}/events/redeliver",
+                        params={"case_id": spec["case_id"]},
+                        headers={
+                            "X-Actor-Id": spec["actor_id"],
+                            "X-Schedule-Id": spec["schedule_id"],
+                        },
+                        timeout=30.0,
+                    ).raise_for_status()
+                outbox.put(("ok", spec["actor_id"], "redelivered"))
+            except Exception as exc:
+                outbox.put(("error", spec["actor_id"], f"{type(exc).__name__}: {exc}"))
+
         elif kind == "run_projector":
             # The projector is a scheduled actor, not a background timer. That is
             # what lets a schedule decide whether the projection catches up
@@ -74,6 +95,7 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                         checkpoint=(
                             barrier.checkpoint if barrier else (lambda _n: None)
                         ),
+                        order=spec.get("projection_order"),
                     )
                 outbox.put(("ok", spec["actor_id"], f"applied={applied}"))
             except Exception as exc:
@@ -101,12 +123,18 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             # Scoped to what this actor does, including approval authority so
             # amounts above the single-action threshold are properly authorized
             # rather than merely unenforced.
+            # Scopes come from the schedule when it names them, so a schedule
+            # can withhold approval authority and prove authorization prevents
+            # the action rather than merely permitting everything.
             token = issue_token(
                 spec["actor_id"],
-                [
-                    "refund:create", "refund:approved",
-                    "credit:create", "credit:approved",
-                ],
+                spec.get(
+                    "scopes",
+                    [
+                        "refund:create", "refund:approved",
+                        "credit:create", "credit:approved",
+                    ],
+                ),
                 tenant,
             )
             billing = HttpServiceClient(
@@ -194,6 +222,9 @@ class AgentPool:
 
     def dispatch_projector(self, spec: dict) -> None:
         self._inbox.put(("run_projector", spec))
+
+    def dispatch_redeliver(self, spec: dict) -> None:
+        self._inbox.put(("run_redeliver", spec))
 
     def collect(self, count: int, timeout: float = 120.0) -> list[tuple]:
         return [self._outbox.get(timeout=timeout) for _ in range(count)]

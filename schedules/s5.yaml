@@ -1,0 +1,47 @@
+# S5 -- redelivery. MUST PASS.
+#
+# An at-least-once bus re-offers events that were already applied. The
+# projection must absorb that without moving.
+#
+# This is the anti-strawman control for the projection itself. A double-counted
+# event would inflate the projection and fabricate a violation out of nothing --
+# the worst available false positive, because it has the exact shape of the real
+# result. If S5 ever fails, no S-series verdict can be trusted.
+#
+# R re-offers both services' applied events at a moment the schedule chooses,
+# rather than hoping a real bus duplicates at the right instant.
+
+schedule_id: S5
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s5-a
+  - id: P
+    action: project
+  - id: R
+    action: redeliver
+  - id: Q
+    action: project
+
+expect:
+  verdict: CLEAN
+  committed_total: "600.00"
+  projection_total_after: "600.00"
+
+steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # First application.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
+  # R re-offers it, then Q folds it in again. The projection must not move.
+  - [Q, crm.before_poll]
+  - [Q, crm.before_apply_event]
