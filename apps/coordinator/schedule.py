@@ -57,6 +57,14 @@ class Schedule:
     def pointer(self) -> int:
         return self._pointer
 
+    @property
+    def current_step(self) -> tuple[str, str, int] | None:
+        """The 4-tuple key (minus schedule_id) the pointer is waiting on."""
+        if self.is_complete:
+            return None
+        actor, checkpoint = self._steps[self._pointer]
+        return actor, checkpoint, self._step_occurrence[self._pointer]
+
     def arrive(self, actor_id: str, checkpoint: str) -> tuple[int, bool]:
         """Register an arrival. Returns (occurrence_index, is_next).
 
