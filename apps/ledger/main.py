@@ -21,12 +21,13 @@ import os
 
 from decimal import Decimal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from apps.ledger.db import connect
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
+from libs.enforcement import authorize
 from libs.outbox import publish
 from libs.service_common import (
     append_decision,
@@ -58,7 +59,10 @@ def _row_to_dict(row) -> dict:
 
 
 @app.post("/credits", status_code=201)
-def create_credit(req: CreditRequest, response_model=None):
+def create_credit(req: CreditRequest, request: Request, response_model=None):
+    # Authorized BEFORE any effect is written, so a denied action leaves
+    # no row and no event rather than relying on a rollback.
+    authorize(request, action="credit", amount=req.amount)
     actor = current_actor()
     _checkpoint("ledger.after_read_before_decide")
 
