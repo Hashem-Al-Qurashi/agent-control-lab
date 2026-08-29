@@ -95,3 +95,55 @@ def test_s1_and_s1c_differ_only_in_when_the_projection_catches_up(clean_state):
 def test_s1_leaves_no_waiter_parked(clean_state):
     outcome = run_schedule("S1", clean_state)
     assert outcome.parked_waiters == []
+
+
+def test_ordinary_monitoring_does_not_see_the_s1_breach(clean_state):
+    """H2, measured rather than asserted.
+
+    After S1 the system is, by every conventional signal, healthy: both actors
+    succeeded, both events were published and applied, the projection agrees
+    with the events it folded in, no duplicate keys, no orphans. A competent
+    team's reconciler reports nothing.
+
+    The business state is wrong by 100.
+
+    The reconciler is deliberately not told about the ceiling -- that check is
+    the solution under test, and giving it to the baseline would make this
+    finding circular. So this measures what ordinary monitoring actually sees,
+    which is the point.
+    """
+    from apps.reconciliation.worker import reconcile
+
+    outcome = run_schedule("S1", clean_state)
+    assert_actors_succeeded(outcome)
+
+    assert outcome.result.verdict is Verdict.VIOLATION
+    assert outcome.result.realized_overage == Decimal("100.00")
+
+    report = reconcile("case-s1")
+
+    assert report.clean, (
+        "ordinary monitoring reported something -- if it can see this breach, "
+        f"the silent-failure finding does not hold. Findings: {report.findings}"
+    )
+
+
+def test_the_contrast_in_one_assertion(clean_state):
+    """Every conventional signal green; the money wrong."""
+    from apps.reconciliation.worker import reconcile
+
+    outcome = run_schedule("S1", clean_state)
+
+    signals = {
+        "all actors succeeded": all(o[0] == "ok" for o in outcome.actor_outcomes),
+        "schedule executed as declared": [tuple(r) for r in outcome.release_order]
+        == [tuple(s) for s in expected_release_order("S1")],
+        "no waiter stranded": outcome.parked_waiters == [],
+        "reconciler clean": reconcile("case-s1").clean,
+    }
+    assert all(signals.values()), signals
+
+    assert outcome.result.verdict is Verdict.VIOLATION, (
+        "every conventional signal is green and the business state must still "
+        "be wrong -- that gap is the entire Stage 1 result"
+    )
