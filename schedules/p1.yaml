@@ -1,0 +1,36 @@
+# P1 -- sequential negative control. MUST PASS.
+#
+# Fully sequential, fully propagated: A completes its refund entirely before B
+# begins its credit. B therefore observes A's committed 600 and correctly
+# decides its 300 still fits under the 1000 ceiling.
+#
+# This is the control that proves the oracle is not trigger-happy. If P1 reports
+# a violation, the instrument is wrong, not the system.
+#
+# It also fails closed if it passes while any waiter is still parked -- otherwise
+# "pass" could mean the second actor never ran at all.
+
+schedule_id: P1
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: p1-a
+  - id: B
+    action: credit
+    amount: "300.00"
+    idempotency_key: p1-b
+
+expect:
+  verdict: CLEAN
+  committed_total: "900.00"
+
+steps:
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  - [B, ledger.after_read_before_decide]
+  - [B, ledger.after_commit_before_ack]

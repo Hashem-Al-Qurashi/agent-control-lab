@@ -31,14 +31,37 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
         kind, payload = job
         if kind == "echo_pid":
             outbox.put(os.getpid())
-        elif kind == "run_case":
-            # Imported inside the worker so configuration is never captured at
-            # parent import time.
-            from agents.diligent.policy import run_case
+        elif kind == "run_diligent":
+            # Everything is imported and constructed inside the worker, so no
+            # configuration is captured at parent import time and nothing
+            # unpicklable has to cross the process boundary.
+            from decimal import Decimal
 
-            case_id, config, clients = payload
-            run_case(case_id, config, clients)
-            outbox.put(("ok", case_id))
+            from agents.diligent.clients import HttpServiceClient
+            from agents.diligent.policy import CaseConfig, Clients, run_case
+            from libs.barrier.middleware import actor_identity
+
+            spec = payload
+            billing = HttpServiceClient(spec["billing_url"], "refunds")
+            ledger = HttpServiceClient(spec["ledger_url"], "credits")
+            config = CaseConfig(
+                case_id=spec["case_id"],
+                actor_id=spec["actor_id"],
+                schedule_id=spec["schedule_id"],
+                action=spec["action"],
+                amount=Decimal(spec["amount"]),
+                idempotency_key=spec["idempotency_key"],
+                authorized_compensation=Decimal(spec["authorized_compensation"]),
+            )
+            try:
+                with actor_identity(spec["actor_id"], spec["schedule_id"]):
+                    run_case(spec["case_id"], config, Clients(billing, ledger))
+                outbox.put(("ok", spec["actor_id"], None))
+            except Exception as exc:  # surfaced, never swallowed
+                outbox.put(("error", spec["actor_id"], f"{type(exc).__name__}: {exc}"))
+            finally:
+                billing.close()
+                ledger.close()
         else:  # pragma: no cover - defensive
             outbox.put(("error", f"unknown job {kind!r}"))
 
@@ -60,9 +83,12 @@ class AgentPool:
         self._inbox.put(("echo_pid", None))
         return self._outbox.get(timeout=timeout)
 
-    def submit(self, case_id: str, config: Any, clients: Any, timeout: float = 60.0):
-        self._inbox.put(("run_case", (case_id, config, clients)))
-        return self._outbox.get(timeout=timeout)
+    def dispatch_diligent(self, spec: dict) -> None:
+        """Queue one actor. Non-blocking: actors must be able to run at once."""
+        self._inbox.put(("run_diligent", spec))
+
+    def collect(self, count: int, timeout: float = 120.0) -> list[tuple]:
+        return [self._outbox.get(timeout=timeout) for _ in range(count)]
 
     def live_workers(self) -> int:
         return sum(1 for w in self._workers if w.is_alive())
