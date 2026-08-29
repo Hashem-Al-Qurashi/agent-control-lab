@@ -64,8 +64,38 @@ def _spawn(module: str, port: int, env_extra: dict, workers: int) -> subprocess.
     )
 
 
+def _assert_no_orphaned_services() -> None:
+    """Fail loudly if services from a previous run are still alive.
+
+    A killed or crashed suite can leave uvicorn workers holding connections to
+    the same databases. They do not act on their own, but they compete for
+    connections and CPU, and timing-sensitive behaviour then diverges.
+
+    This was observed once: a full-suite run reported P0 and P2 replays
+    diverging, and did not reproduce in three subsequent runs after orphaned
+    processes were cleared. That is a determinism claim quietly depending on a
+    clean machine -- so the dependency is now checked rather than assumed.
+
+    Failing here is correct. A polluted environment silently produces
+    unreproducible results, which is the exact failure this harness exists to
+    make impossible.
+    """
+    result = subprocess.run(
+        ["pgrep", "-f", "uvicorn apps\\."], capture_output=True, text=True
+    )
+    pids = [p for p in result.stdout.split() if p]
+    if pids:
+        raise RuntimeError(
+            f"{len(pids)} orphaned service process(es) from a previous run are "
+            f"still alive (pids {pids}). They compete for the same databases and "
+            "make timing-sensitive results unreproducible. Clear them with:\n"
+            "    pkill -f 'uvicorn apps\\.'"
+        )
+
+
 @pytest.fixture(scope="session")
 def stack():
+    _assert_no_orphaned_services()
     billing_migrations()
     ledger_migrations()
     control_migrations()
