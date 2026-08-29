@@ -137,6 +137,7 @@ there is an explicit checkpoint.
 | [ASSESSMENT-SAMPLE.md](docs/ASSESSMENT-SAMPLE.md) | This repo assessed as if it were a client system |
 | [INVARIANT-CATALOG.md](docs/INVARIANT-CATALOG.md) | The invariants, and the taxonomy that decides how each can be enforced |
 | [THREAT-MODEL.md](docs/THREAT-MODEL.md) | T1–T12, every control citing a test that exists |
+| [CAPACITY.md](docs/CAPACITY.md) | The ceiling holds exactly at 100 concurrent agents; latency scales linearly, and why |
 | [ENGINEER-BRIEF.md](docs/ENGINEER-BRIEF.md) | What the next person must know before touching this |
 | [adr/](docs/adr/) | Six decisions, including two things deliberately *not* built |
 
