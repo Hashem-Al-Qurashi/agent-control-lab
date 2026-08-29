@@ -1,7 +1,4 @@
-"""Ledger's own database. Raw SQL, no ORM.
-
-Connection details are read at call time, never at import.
-"""
+"""CRM's own database. Holds a projection, never an authoritative record."""
 
 from __future__ import annotations
 
@@ -10,8 +7,8 @@ import pathlib
 from libs.service_common import connect as _connect
 
 MIGRATIONS = pathlib.Path(__file__).parent / "migrations"
-DSN_ENV = "LEDGER_DSN"
-DEFAULT_DSN = "postgresql://ledger:ledger@127.0.0.1:55434/ledger"
+DSN_ENV = "CRM_DSN"
+DEFAULT_DSN = "postgresql://crm:crm@127.0.0.1:55436/crm"
 
 
 def connect():
@@ -26,9 +23,9 @@ def run_migrations() -> None:
 
 
 def truncate_all() -> None:
-    """Verified clean slate. Leftover rows push a sum over the ceiling
-    regardless of concurrency, which is indistinguishable from a real
-    violation."""
     with connect() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE credits, decision_log, request_log, outbox RESTART IDENTITY")
+        cur.execute(
+            "TRUNCATE compensation_projection, applied_events, request_log "
+            "RESTART IDENTITY"
+        )
         conn.commit()

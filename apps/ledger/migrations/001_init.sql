@@ -49,3 +49,21 @@ CREATE TABLE IF NOT EXISTS request_log (
     started_at TIMESTAMPTZ NOT NULL,
     ended_at   TIMESTAMPTZ
 );
+
+-- Transactional outbox. Written in the same transaction as the effect it
+-- describes, so propagation lag is a property of the architecture rather than a
+-- bug in the harness. Per-service, because there is no shared transaction
+-- boundary to put it anywhere else -- which is the premise, not an inconvenience.
+CREATE TABLE IF NOT EXISTS outbox (
+    id           BIGSERIAL PRIMARY KEY,
+    case_id      TEXT           NOT NULL,
+    actor_id     TEXT           NOT NULL,
+    service      TEXT           NOT NULL,
+    event_type   TEXT           NOT NULL,
+    entity_id    BIGINT         NOT NULL,
+    amount       NUMERIC(12, 2) NOT NULL,
+    published_at TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    applied_at   TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS outbox_unapplied_idx ON outbox (id) WHERE applied_at IS NULL;

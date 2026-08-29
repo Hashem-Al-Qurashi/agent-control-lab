@@ -69,3 +69,23 @@ services:
       retries: 20
     tmpfs:
       - /var/lib/postgresql/data
+
+  # CRM holds a projection, not authoritative state. Its lag is what makes the
+  # Stage 1 thesis testable: an agent reading every source available to it can
+  # still hold a stale view, because one of those sources has not caught up.
+  crm-db:
+    image: postgres:16-alpine
+    container_name: acl-crm-db
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: crm
+    ports:
+      - "127.0.0.1:55436:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data

@@ -27,7 +27,11 @@ from pydantic import BaseModel
 from apps.ledger.db import connect
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
-from libs.service_common import append_decision, checkpoint as _checkpoint
+from libs.outbox import publish
+from libs.service_common import (
+    append_decision,
+    checkpoint as _checkpoint,
+)
 
 SERVICE = "ledger"
 
@@ -86,6 +90,18 @@ def create_credit(req: CreditRequest, response_model=None):
             entity_id=row[0],
             from_state=None,
             to_state="COMMITTED",
+            amount=req.amount,
+        )
+        # Same cursor, therefore the same transaction as the effect above.
+        # Publishing separately could commit the event without the effect, which
+        # would make propagation lag a harness bug rather than a real property.
+        publish(
+            cur,
+            case_id=req.case_id,
+            actor_id=actor,
+            service=SERVICE,
+            event_type="CreditCommitted",
+            entity_id=row[0],
             amount=req.amount,
         )
         conn.commit()
@@ -150,3 +166,42 @@ def health() -> dict:
     configured worker count is an intention; distinct pids are evidence.
     """
     return {"service": SERVICE, "pid": os.getpid()}
+
+
+@app.get("/events")
+def list_events(unapplied_only: bool = True) -> dict:
+    """Expose this service's outbox.
+
+    The projector reads events over HTTP rather than reaching into this
+    service's database. There is no shared transaction boundary between
+    services, and that constraint is the premise of the experiment -- a
+    projector with direct database access would quietly dissolve it.
+    """
+    clause = "WHERE applied_at IS NULL" if unapplied_only else ""
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, case_id, actor_id, service, event_type, entity_id, amount "
+            f"FROM outbox {clause} ORDER BY id"
+        )
+        events = [
+            {
+                "id": r[0], "case_id": r[1], "actor_id": r[2], "service": r[3],
+                "event_type": r[4], "entity_id": r[5], "amount": str(r[6]),
+            }
+            for r in cur.fetchall()
+        ]
+    return {"events": events, "pending": len(events) if unapplied_only else None}
+
+
+@app.post("/events/{event_id}/applied")
+def mark_event_applied(event_id: int) -> dict:
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE outbox SET applied_at = now() WHERE id = %s RETURNING id",
+            (event_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="event not found")
+        conn.commit()
+    return {"id": row[0], "applied": True}
