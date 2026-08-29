@@ -1,0 +1,10 @@
+[project]
+name = "agent-control-lab"
+version = "0.0.1"
+description = "Stage 0 instrument-validation harness for action-taking agent reliability"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra"
