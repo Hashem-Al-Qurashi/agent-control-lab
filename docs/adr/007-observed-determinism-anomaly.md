@@ -119,3 +119,48 @@ thing that would close this, and it has not been done.
 
 20 replays across all five schedules pass on a clean machine with the overlap
 removed. That is consistent with the explanation and does not establish it.
+
+---
+
+## Update — 2026-08-30 (later): the reproduction was attempted, and it failed
+
+The section above ends by naming the experiment that would close this. It was
+then run, and it did not reproduce the divergence.
+
+**Method:** revert `natural_stack` to `session` scope — recreating the exact
+overlap condition, using only that scope change and no guard bypass — then run
+`test_mode_b.py` followed by `test_p4_determinism.py` with `ACL_REPLAYS=20`, so
+the Mode B services are live on the same databases throughout every replay.
+
+**Result:** 2 runs. 20 replays × 4 schedules each. **No divergence.**
+
+### What this does to the hypothesis
+
+It weakens it. The measured overlap is real and the mechanism is plausible, but
+the condition has now been recreated deliberately and the anomaly did not
+follow. A cause that cannot be made to produce its effect on demand is a
+suspect, not an explanation.
+
+Stated plainly because it is the outcome most tempting to leave out: **the update
+above found a satisfying story, and the experiment that would have confirmed it
+did not.** The tidy narrative — session-scoped fixture, same databases, P0 and P2
+specifically — survives as a coincidence that has not been shown to be more than
+one.
+
+Sample size is the honest limit in both directions. The original divergence was
+seen **once**, in an unknown number of prior runs; the reproduction attempt is
+**two** runs. Two failures to reproduce a once-seen event is weak evidence
+against, just as one coincidence is weak evidence for.
+
+### Why the scope change stays anyway
+
+It is correct independent of the anomaly. A determinism claim should not depend
+on which other fixtures happen to be alive, and two multi-worker services sharing
+the databases under measurement is co-tenancy nobody chose. Removing it is
+hygiene, and this ADR no longer presents it as a fix.
+
+### Still open, and now with less of an explanation than it appeared to have
+
+Unchanged: the original diff was never captured, so nothing can be attributed to
+it after the fact. What would close this remains a divergence that recurs with
+its diff captured. Everything else is a story about a thing that happened once.
