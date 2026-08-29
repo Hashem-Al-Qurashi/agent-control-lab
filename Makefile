@@ -7,7 +7,7 @@
 PY := python3
 COMPOSE := docker compose
 
-.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest clean
+.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf clean
 
 help:
 	@echo "up          bring up the three databases"
@@ -20,6 +20,7 @@ help:
 	@echo "determinism ACL_REPLAYS=20 replay check"
 	@echo "calibrate   prove the oracle catches a planted violation"
 	@echo "manifest    print the run manifest (isolation levels, topology)"
+	@echo "assessment-pdf  rebuild the client-facing assessment PDF"
 
 up:
 	# --wait blocks until every healthcheck passes. Without it `make up`
@@ -73,6 +74,9 @@ calibrate: migrate
 manifest: migrate
 	$(PY) -c "import json; from oracle.manifest import build_manifest; \
 	print(json.dumps(build_manifest(), indent=2))"
+
+assessment-pdf:
+	$(PY) tools/build_assessment_pdf.py
 
 clean:
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

@@ -101,3 +101,30 @@ def test_results_report_covers_every_declared_schedule():
     missing = sorted(_declared_schedules() - covered)
 
     assert not missing, f"schedules missing from the results report: {missing}"
+
+
+def test_the_assessment_pdf_builder_points_at_a_real_source():
+    """The client-facing artifact is generated, so its generator must not rot.
+
+    A renamed or moved ASSESSMENT-SAMPLE.md would leave the last-built PDF sitting
+    in the repo looking current while `make assessment-pdf` failed -- and a stale
+    PDF is worse than a missing one, because it still gets sent.
+    """
+    from tools.build_assessment_pdf import OUTPUT, SOURCE
+
+    assert SOURCE.exists(), f"the PDF generator reads {SOURCE}, which is gone"
+    assert OUTPUT.exists(), "run `make assessment-pdf` -- the built PDF is missing"
+
+
+def test_the_assessment_pdf_is_not_older_than_its_source():
+    """Catches the edit-the-markdown-forget-the-PDF case in a checkout that has
+    real mtimes. Skipped where git has flattened them (a fresh clone)."""
+    from tools.build_assessment_pdf import OUTPUT, SOURCE
+
+    if abs(OUTPUT.stat().st_mtime - SOURCE.stat().st_mtime) < 2:
+        pytest.skip("mtimes are indistinguishable -- likely a fresh checkout")
+
+    assert OUTPUT.stat().st_mtime >= SOURCE.stat().st_mtime, (
+        "ASSESSMENT-SAMPLE.md is newer than the PDF built from it; "
+        "run `make assessment-pdf`"
+    )
