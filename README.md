@@ -142,7 +142,8 @@ there is an explicit checkpoint.
 | [READINESS-MODEL.md](docs/READINESS-MODEL.md) | Ten domains, each citing what this lab measured — including where it held and still wasn't enough |
 | [RUNBOOKS.md](docs/RUNBOOKS.md) · [SLOS.md](docs/SLOS.md) · [INCIDENT-001.md](docs/INCIDENT-001.md) | Operations: one runbook per alert that can fire, objectives split from zero-tolerance invariants, and a worked incident from this build |
 | [ENGINEER-BRIEF.md](docs/ENGINEER-BRIEF.md) | What the next person must know before touching this |
-| [adr/](docs/adr/) | Six decisions, including two things deliberately *not* built |
+| [ENTERPRISE-REFERENCE-ARCHITECTURE.md](docs/ENTERPRISE-REFERENCE-ARCHITECTURE.md) | Five planes, what the coordination plane costs, and how to adopt it without adopting this repo |
+| [adr/](docs/adr/) | Fourteen decisions, including six things deliberately *not* built |
 
 Citations are enforced, not trusted: `tests/unit/test_docs_integrity.py` fails if
 a document names a test, schedule, ADR, or `make reproduce` target that does not
