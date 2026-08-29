@@ -1,40 +1,51 @@
-# Agent Control Lab — Stage 0
+# Agent Control Lab
 
-A reproducible harness that drives two independently-owned services into a
-scripted interleaving and returns a trustworthy verdict on an aggregate money
-invariant.
+A reproducible harness that drives independently-owned services into scripted
+interleavings and returns a trustworthy verdict on an aggregate money invariant.
 
 ```
 sum(refunds) + sum(credits)  ≤  authorized_compensation
 ```
 
-Billing owns refunds. Ledger owns credits. They have separate databases and no
-shared transaction boundary, so neither can see the sum.
+Billing owns refunds. Ledger owns credits. Separate databases, no shared
+transaction boundary — neither can see the sum. CRM holds a *projection* of the
+total, which is what an agent is usually given to read. A control service can
+hold reservations against the budget.
 
-## What Stage 0 is, and is not
+**The result in one line:** three of eleven scenarios end with the business state
+wrong, and two of those are invisible to every signal the system emits — while
+every action was authenticated, authorized, idempotent, and individually
+correct.
 
-**It is instrument validation.** Its job is to prove the rig can deterministically
-produce a *known* violation, refuse to produce one when it shouldn't, and
-demonstrate the contrast.
+## The two failure modes
 
-**It is not a finding.** With two authoritative services and no propagation lag,
-the only reachable failure is plain read-then-write TOCTOU — textbook, known
-since Gray. Nothing here claims otherwise. The interesting case, where an agent
-reads every authoritative source and *still* works from a stale cross-system
-picture, needs event-driven projections and belongs to a later stage.
+**P-series — concurrency.** Two agents read before either writes. Textbook
+read-then-write, known since Gray. Nothing here is claimed as novel.
 
-Every schedule below is a control.
+**S-series — staleness.** The interesting one. Agent B reads *strictly after* A
+has committed and been acknowledged, and is wrong anyway, because it reads a
+projection that has not caught up. **Sequencing does not fix this**, which is
+what separates it from the P-series.
 
-| Schedule | What it does | Required |
+| Schedule | Verdict | Role |
 |---|---|---|
-| **P0** | P2's exact interleaving, plus a reservation primitive | **PASS** |
-| **P1** | Fully sequential, reads and writes both gated | **PASS** |
-| **P2** | Concurrent read-check-write race | **FAIL — violation** |
-| **P3** | Commit, lost acknowledgement, explicit keyed retry | **PASS** |
-| **P4** | Every schedule replayed N times | **PASS — identical** |
+| **P1** | CLEAN | Sequential. Proves the oracle is not trigger-happy |
+| **P2** | **VIOLATION** | Concurrency race. Positive control |
+| **P0** | CLEAN | P2's interleaving + reservation. Locates the fault in the interface |
+| **P3** | CLEAN | Lost ACK + keyed retry. Idempotency is orthogonal to the aggregate |
+| **S1** | **VIOLATION** | Strictly sequential, stale view. Sequencing does not fix it |
+| **S1C** | CLEAN | S1 with the projection caught up. Isolates the variable |
+| **S1H** | CLEAN | S1 with a reservation. Coordination fixes staleness too |
+| **S3** | **VIOLATION** | Partial catch-up. Exposure tracks the lag |
+| **S4** | CLEAN | Reversed apply order. Rules out ordering as the cause |
+| **S5** | CLEAN | At-least-once redelivery. Projection must not inflate |
+| **S6** | CLEAN | Above threshold, no approval. Authorization is not decorative |
 
-**If P2 does not violate, the rig is broken — not the thesis.** Check barrier
-placement relative to commit, actor scoping, server worker count, oracle
+Plus **P4**, which replays every schedule and requires byte-identical transition
+sequences.
+
+**If P2 or S1 stops violating, the rig is broken — not the thesis.** Check
+barrier placement relative to commit, actor scoping, worker count, oracle
 correctness, and DB isolation level, in that order.
 
 ## Run it
@@ -54,6 +65,12 @@ decide correctly from what they observed, both actions are authorised,
 idempotent, locally valid and successfully executed. The aggregate is 1100.
 Nothing is claimed from this beyond: the rig can produce a known violation on
 demand.
+
+**S1 is the finding.** No overlap at all — B begins only after A is fully
+acknowledged. It reads the CRM projection, because that is the integration point
+it was given, and the projection has not applied A's event. The remedy is *not* a
+faster projection; a faster projection is still a projection. S1H shows what
+works: an authority that holds real state rather than a derived view.
 
 **P0 is what makes P2 mean anything.** Without it the rebuttal lands — *"you
 built a system with no coordinator and then showed it doesn't coordinate."* P0
@@ -112,6 +129,21 @@ there is an explicit checkpoint.
 - **Genuine overlap asserted server-side**, not merely client-side.
 - **Money is `Decimal`/`NUMERIC(12,2)` end to end.** Never float.
 
+## Documents
+
+| Document | What it is |
+|---|---|
+| [RESULTS.md](docs/RESULTS.md) | Every verdict, **generated by the run that asserts it** |
+| [ASSESSMENT-SAMPLE.md](docs/ASSESSMENT-SAMPLE.md) | This repo assessed as if it were a client system |
+| [INVARIANT-CATALOG.md](docs/INVARIANT-CATALOG.md) | The invariants, and the taxonomy that decides how each can be enforced |
+| [THREAT-MODEL.md](docs/THREAT-MODEL.md) | T1–T12, every control citing a test that exists |
+| [ENGINEER-BRIEF.md](docs/ENGINEER-BRIEF.md) | What the next person must know before touching this |
+| [adr/](docs/adr/) | Six decisions, including two things deliberately *not* built |
+
+Citations are enforced, not trusted: `tests/unit/test_docs_integrity.py` fails if
+a document names a test, schedule, ADR, or `make reproduce` target that does not
+exist.
+
 ## Layout
 
 ```
@@ -127,7 +159,14 @@ schedules/         P0–P3 declarations + runner
 
 ## Deliberately absent
 
-Kafka · OIDC · OPA · OpenTelemetry · LangGraph · LLM agents · Temporal · a CRM
-service · a reconciliation worker · naturalistic stress mode · cloud deployment.
-All belong to later stages. Adding them here would enlarge the repo without
-making the instrument more trustworthy.
+**Temporal** — ADR-006 records why: reservations are sufficient for both failure
+modes, and the ADR names the three triggers that would change that.
+
+**Keycloak and OPA** — ADR-005 records the substitution. The *properties* they
+provide are implemented and tested; the products are not running, and the exact
+diff is written down.
+
+**Kafka, LLM agents, naturalistic stress mode, cloud deployment** — later stages.
+
+Adding any of them now would enlarge the repo without making a single finding
+more trustworthy.
