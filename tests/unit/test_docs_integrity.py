@@ -34,38 +34,59 @@ def _declared_schedules() -> set[str]:
     return ids
 
 
-@pytest.mark.parametrize(
-    "doc", ["THREAT-MODEL.md", "ASSESSMENT-SAMPLE.md", "ENGINEER-BRIEF.md"]
-)
+def _all_docs() -> list[pathlib.Path]:
+    """Every prose file, discovered -- never a hand-maintained list.
+
+    The list used to name three files. Four documents and fourteen ADRs were
+    written after it, none of them checked, and the suite stayed green the whole
+    time: the enforcement passed because it was not looking. A checker with a
+    hardcoded scope silently stops covering the repo the moment the repo grows.
+    """
+    return sorted(DOCS.rglob("*.md")) + [REPO / "README.md"]
+
+
+def _doc_ids() -> list[str]:
+    return [str(p.relative_to(REPO)) for p in _all_docs()]
+
+
+@pytest.mark.parametrize("doc", _all_docs(), ids=_doc_ids())
 def test_every_cited_test_exists(doc):
-    text = (DOCS / doc).read_text()
-    cited = set(re.findall(r"`(test_[a-z0-9_]+)`", text))
+    cited = set(re.findall(r"`(test_[a-z0-9_]+)`", doc.read_text()))
     missing = sorted(cited - _defined_tests())
 
-    assert not missing, f"{doc} cites tests that do not exist: {missing}"
+    assert not missing, f"{doc.name} cites tests that do not exist: {missing}"
 
 
-@pytest.mark.parametrize("doc", ["THREAT-MODEL.md", "ASSESSMENT-SAMPLE.md"])
+# P4 is the replay-determinism suite, not a schedule -- it replays the others.
+NOT_A_SCHEDULE = {"P4"}
+
+
+@pytest.mark.parametrize("doc", _all_docs(), ids=_doc_ids())
 def test_every_cited_schedule_exists(doc):
-    text = (DOCS / doc).read_text()
-    cited = set(re.findall(r"`(P[0-3]|S1C?|S1H|S[3-6])`", text))
-    missing = sorted(cited - _declared_schedules())
+    """Match the SHAPE of a schedule id, never an enumeration of known ones.
 
-    assert not missing, f"{doc} cites schedules that do not exist: {missing}"
+    An enumerated pattern only catches typos in ids that already exist. A
+    citation to `S9` matched nothing, so it was not checked -- the check passed
+    by failing to see it, which is the same vacuum as a hardcoded file list.
+    """
+    cited = set(re.findall(r"`([PS]\d+[A-Z]*)`", doc.read_text()))
+    missing = sorted(cited - _declared_schedules() - NOT_A_SCHEDULE)
+
+    assert not missing, f"{doc.name} cites schedules that do not exist: {missing}"
 
 
 def test_every_adr_referenced_by_a_doc_exists():
     adrs = {p.name for p in (DOCS / "adr").glob("*.md")}
     numbers = {name.split("-")[0] for name in adrs}
 
-    for doc in DOCS.glob("*.md"):
+    for doc in _all_docs():
         for ref in re.findall(r"ADR-(\d{3})", doc.read_text()):
             assert ref in numbers, f"{doc.name} references ADR-{ref}, which does not exist"
 
 
 def test_reproduce_commands_name_real_schedules():
     """A README instruction that cannot be run is worse than no instruction."""
-    for doc in list(DOCS.glob("*.md")) + [REPO / "README.md"]:
+    for doc in _all_docs():
         for schedule in re.findall(r"make reproduce SCHEDULE=(\S+)", doc.read_text()):
             assert schedule in _declared_schedules(), (
                 f"{doc.name} tells the reader to run SCHEDULE={schedule}, "
