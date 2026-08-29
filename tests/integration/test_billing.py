@@ -108,6 +108,40 @@ def test_amount_is_stored_with_two_decimal_places(client):
     assert listing.json()["refunds"][0]["amount"] == "123.46"
 
 
+def _decision_log(case_id="case-1"):
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT sequence, actor_id, service, from_state, to_state, amount "
+            "FROM decision_log WHERE case_id = %s ORDER BY sequence",
+            (case_id,),
+        )
+        return cur.fetchall()
+
+
+def test_decision_log_records_every_state_transition(client):
+    """The append-only log is load-bearing for later modes that have no
+    quiescence point. History cannot be reconstructed from mutable rows, so a
+    missing append is unrecoverable rather than merely inconvenient."""
+    created = _post_refund(client, "600.00", "k1").json()
+    client.post(f"/refunds/{created['id']}/void", headers=HEADERS)
+
+    rows = _decision_log()
+    assert [(r[0], r[3], r[4]) for r in rows] == [
+        (1, None, "COMMITTED"),
+        (2, "COMMITTED", "VOIDED"),
+    ]
+    assert all(r[1] == "A" and r[2] == "billing" for r in rows)
+    assert rows[0][5] == Decimal("600.00")
+
+
+def test_idempotent_replay_does_not_append_a_second_decision(client):
+    """One logical operation, one economic effect, one log entry."""
+    _post_refund(client, "600.00", "k1")
+    _post_refund(client, "600.00", "k1")
+
+    assert len(_decision_log()) == 1
+
+
 def test_billing_connects_to_its_own_database_not_the_ledgers(client):
     """One config typo pointing both services at one database invalidates all results."""
     with connect() as conn, conn.cursor() as cur:

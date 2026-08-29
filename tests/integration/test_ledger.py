@@ -78,6 +78,36 @@ def test_unlabelled_request_is_rejected(client):
     assert r.status_code == 400
 
 
+def test_decision_log_records_every_state_transition(client):
+    created = _post_credit(client, "500.00", "k1").json()
+    client.post(f"/credits/{created['id']}/void", headers=HEADERS)
+
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT sequence, actor_id, service, from_state, to_state "
+            "FROM decision_log WHERE case_id = %s ORDER BY sequence",
+            ("case-1",),
+        )
+        rows = cur.fetchall()
+
+    assert [(r[0], r[3], r[4]) for r in rows] == [
+        (1, None, "COMMITTED"),
+        (2, "COMMITTED", "VOIDED"),
+    ]
+    assert all(r[1] == "B" and r[2] == "ledger" for r in rows)
+
+
+def test_idempotent_replay_does_not_append_a_second_decision(client):
+    _post_credit(client, "500.00", "k1")
+    _post_credit(client, "500.00", "k1")
+
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM decision_log WHERE case_id = %s", ("case-1",)
+        )
+        assert cur.fetchone()[0] == 1
+
+
 def test_ledger_connects_to_its_own_database_not_billings(client):
     """The two services must never share a database. One typo invalidates all results."""
     with connect() as conn, conn.cursor() as cur:

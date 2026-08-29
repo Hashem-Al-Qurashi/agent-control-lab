@@ -1,36 +1,25 @@
 """Billing's own database. Raw SQL, no ORM.
 
-Connection details are read at call time, never at import. An import-time read
-would bake configuration into the module and break the process-pool model, where
-one pre-warmed interpreter serves many cases.
+Connection details are read at call time, never at import.
 """
 
 from __future__ import annotations
 
-import os
 import pathlib
 
-import psycopg2
+from libs.service_common import connect as _connect
 
 MIGRATIONS = pathlib.Path(__file__).parent / "migrations"
-
+DSN_ENV = "BILLING_DSN"
 DEFAULT_DSN = "postgresql://billing:billing@127.0.0.1:55433/billing"
 
 
-def dsn() -> str:
-    return os.environ.get("BILLING_DSN", DEFAULT_DSN)
-
-
 def connect():
-    conn = psycopg2.connect(dsn())
-    conn.autocommit = False
-    return conn
+    return _connect(DSN_ENV, DEFAULT_DSN)
 
 
 def run_migrations() -> None:
-    sql = "\n".join(
-        p.read_text() for p in sorted(MIGRATIONS.glob("*.sql"))
-    )
+    sql = "\n".join(p.read_text() for p in sorted(MIGRATIONS.glob("*.sql")))
     with connect() as conn, conn.cursor() as cur:
         cur.execute(sql)
         conn.commit()
@@ -38,7 +27,7 @@ def run_migrations() -> None:
 
 def truncate_all() -> None:
     """Verified clean slate. Leftover rows push a sum over the ceiling
-    regardless of concurrency, which would be indistinguishable from a real
+    regardless of concurrency, which is indistinguishable from a real
     violation."""
     with connect() as conn, conn.cursor() as cur:
         cur.execute("TRUNCATE refunds, decision_log RESTART IDENTITY")
