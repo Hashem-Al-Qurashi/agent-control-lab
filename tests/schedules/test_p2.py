@@ -16,12 +16,22 @@ isolation level. Draw no conclusion about the thesis.
 from decimal import Decimal
 
 from oracle.invariants import Verdict
-from schedules.runner import assert_actors_succeeded, run_schedule
+from schedules.runner import (
+    assert_actors_succeeded,
+    assert_schedule_executed,
+    expected_release_order,
+    run_schedule,
+)
 
 
 def test_p2_produces_a_violation(clean_state):
     outcome = run_schedule("P2", clean_state)
     assert_actors_succeeded(outcome)
+
+    # Coupled deliberately. With the barrier bypassed, P2 still violates by
+    # natural race -- so the violation alone does not establish that the
+    # schedule caused it, and a dead barrier would look identical.
+    assert_schedule_executed(outcome, expected_release_order("P2"))
 
     assert outcome.result.verdict is Verdict.VIOLATION, (
         "P2 did not violate -- the rig is broken, not the thesis. Check barrier "

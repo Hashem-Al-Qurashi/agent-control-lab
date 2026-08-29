@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import psycopg2
 
-from oracle.sql import DSNS, READONLY_PASSWORD, READONLY_USER
+from oracle.sql import READONLY_PASSWORD, READONLY_USER
 
 OWNER_DSNS = {
     "billing": "postgresql://billing:billing@127.0.0.1:55433/billing",
@@ -37,6 +37,8 @@ def grant_readonly() -> None:
 
     Idempotent so it can run before any evaluation.
     """
+    # service and READONLY_USER are module constants; GRANT statements cannot
+    # take bound parameters for identifiers. No request data reaches this SQL.
     for service, dsn in OWNER_DSNS.items():
         conn = psycopg2.connect(dsn)
         conn.autocommit = True

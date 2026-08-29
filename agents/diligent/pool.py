@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-from typing import Any
 
 _SHUTDOWN = "__shutdown__"
 

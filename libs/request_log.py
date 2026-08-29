@@ -13,6 +13,7 @@ measurement. Every other error path in this codebase surfaces.
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timezone
 
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -54,7 +55,12 @@ class RequestLogMiddleware:
                 row_id = cur.fetchone()[0]
                 conn.commit()
                 return row_id
-        except Exception:
+        except Exception as exc:
+            # Never raises: an instrumentation failure must not change the
+            # behaviour of the system being measured. But it is reported, because
+            # a silently empty request_log would make the overlap proof look
+            # like serialisation.
+            print(f"request_log insert failed: {exc}", file=sys.stderr)
             return None
 
     def _finish(self, row_id: int | None) -> None:
@@ -67,5 +73,5 @@ class RequestLogMiddleware:
                     (datetime.now(timezone.utc), row_id),
                 )
                 conn.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"request_log finish failed: {exc}", file=sys.stderr)

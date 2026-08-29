@@ -8,7 +8,6 @@ Asserted per table rather than by trusting TRUNCATE, because the failure being
 guarded is precisely a reset that missed something.
 """
 
-import httpx
 import psycopg2
 import pytest
 

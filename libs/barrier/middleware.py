@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Iterator
 
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 ACTOR_HEADER = "x-actor-id"
 SCHEDULE_HEADER = "x-schedule-id"

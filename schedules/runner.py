@@ -27,9 +27,14 @@ import yaml
 from agents.diligent.pool import AgentPool
 from oracle.divergence import capture_views
 from oracle.invariants import Result, evaluate
-from oracle.quiescence import NotQuiescent, ensure_quiescent
+from oracle.quiescence import ensure_quiescent
 
 SCHEDULES = pathlib.Path(__file__).parent
+
+
+class ScheduleNotExecuted(Exception):
+    """The run did not follow its declared interleaving, so no verdict from it
+    can be attributed to the schedule."""
 
 
 class ActorFailed(Exception):
@@ -45,6 +50,19 @@ class RunOutcome:
     parked_waiters: list
     actor_outcomes: list
     divergence: dict
+
+
+def expected_release_order(schedule_id: str) -> list[tuple[str, str, int]]:
+    """Declared steps with occurrence indices resolved, matching what the
+    coordinator records."""
+    from collections import Counter
+
+    seen: Counter = Counter()
+    order = []
+    for actor, checkpoint in load(schedule_id)["steps"]:
+        order.append((actor, checkpoint, seen[(actor, checkpoint)]))
+        seen[(actor, checkpoint)] += 1
+    return order
 
 
 def load(schedule_id: str) -> dict:
@@ -104,6 +122,27 @@ def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> R
         actor_outcomes=actor_outcomes,
         divergence=capture_views(case_id).as_dict(),
     )
+
+
+def assert_schedule_executed(outcome: RunOutcome, expected_steps) -> None:
+    """Assert the declared interleaving is what actually ran.
+
+    Gate-3 finding: with the barrier bypassed entirely, P2 still produced a
+    violation -- both actors race naturally and both observe zero. So "P2
+    violated" on its own does NOT establish that the schedule caused it, and a
+    dead barrier would look identical to a working one.
+
+    Every verdict claim is therefore coupled to this check. A verdict without
+    evidence of the interleaving that produced it is not evidence.
+    """
+    actual = [tuple(r) for r in outcome.release_order]
+    expected = [tuple(s) for s in expected_steps]
+    if actual != expected:
+        raise ScheduleNotExecuted(
+            f"{outcome.schedule_id} did not execute its declared interleaving.\n"
+            f"declared: {expected}\nactual:   {actual}\n"
+            "The verdict above cannot be attributed to the schedule."
+        )
 
 
 def assert_actors_succeeded(outcome: RunOutcome) -> None:

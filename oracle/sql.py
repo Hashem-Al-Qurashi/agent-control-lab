@@ -48,6 +48,9 @@ def readonly_connection(service: str):
 
 
 def _sum(service: str, case_id: str, states: tuple[str, ...]) -> Decimal:
+    # Table name comes from the TABLES constant above, never from a request.
+    # Postgres cannot bind an identifier as a parameter, so interpolation is
+    # required here; every user-controlled value below is bound with %s.
     table = TABLES[service]
     with readonly_connection(service) as conn, conn.cursor() as cur:
         cur.execute(

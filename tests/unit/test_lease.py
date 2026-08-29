@@ -14,8 +14,6 @@ depend on wall-clock timing would be self-undermining.
 import threading
 import time
 
-import pytest
-
 from apps.coordinator.barrier import Barrier, BarrierAborted
 from apps.coordinator.schedule import Schedule
 
