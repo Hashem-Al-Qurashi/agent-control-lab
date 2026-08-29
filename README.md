@@ -139,6 +139,8 @@ there is an explicit checkpoint.
 | [THREAT-MODEL.md](docs/THREAT-MODEL.md) | T1–T12, every control citing a test that exists |
 | [MODE-B.md](docs/MODE-B.md) | Naturalistic stress: exposure vs arrival separation, and why a bare frequency is uninterpretable |
 | [CAPACITY.md](docs/CAPACITY.md) | The ceiling holds exactly at 100 concurrent agents; latency scales linearly, and why |
+| [READINESS-MODEL.md](docs/READINESS-MODEL.md) | Ten domains, each citing what this lab measured — including where it held and still wasn't enough |
+| [RUNBOOKS.md](docs/RUNBOOKS.md) · [SLOS.md](docs/SLOS.md) · [INCIDENT-001.md](docs/INCIDENT-001.md) | Operations: one runbook per alert that can fire, objectives split from zero-tolerance invariants, and a worked incident from this build |
 | [ENGINEER-BRIEF.md](docs/ENGINEER-BRIEF.md) | What the next person must know before touching this |
 | [adr/](docs/adr/) | Six decisions, including two things deliberately *not* built |
 

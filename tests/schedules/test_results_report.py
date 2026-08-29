@@ -10,9 +10,6 @@ quietly publishing the new number.
 """
 
 import pathlib
-from decimal import Decimal
-
-import pytest
 
 from apps.reconciliation.worker import reconcile
 from oracle.invariants import Verdict

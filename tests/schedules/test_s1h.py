@@ -18,8 +18,6 @@ still a projection. It is having an authority for the aggregate at all.
 
 from decimal import Decimal
 
-import psycopg2
-
 from oracle.invariants import Verdict
 from schedules.runner import assert_actors_succeeded, run_schedule
 
