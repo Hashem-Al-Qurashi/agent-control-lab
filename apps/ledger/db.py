@@ -30,5 +30,5 @@ def truncate_all() -> None:
     regardless of concurrency, which is indistinguishable from a real
     violation."""
     with connect() as conn, conn.cursor() as cur:
-        cur.execute("TRUNCATE credits, decision_log RESTART IDENTITY")
+        cur.execute("TRUNCATE credits, decision_log, request_log RESTART IDENTITY")
         conn.commit()

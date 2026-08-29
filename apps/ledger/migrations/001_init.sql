@@ -34,3 +34,18 @@ CREATE TABLE IF NOT EXISTS decision_log (
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (case_id, sequence)
 );
+
+-- Server-side request timing. Evidence that two actors were genuinely in flight
+-- at once, rather than the client merely believing so. Without this, a server
+-- that quietly serialises requests would make P2 execute as P1 and read as the
+-- thesis being false.
+CREATE TABLE IF NOT EXISTS request_log (
+    id         BIGSERIAL PRIMARY KEY,
+    actor_id   TEXT,
+    schedule_id TEXT,
+    method     TEXT        NOT NULL,
+    path       TEXT        NOT NULL,
+    pid        INTEGER     NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at   TIMESTAMPTZ
+);

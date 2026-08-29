@@ -26,12 +26,14 @@ from pydantic import BaseModel
 
 from apps.billing.db import connect
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
+from libs.request_log import RequestLogMiddleware
 from libs.service_common import append_decision, checkpoint as _checkpoint
 
 SERVICE = "billing"
 
 app = FastAPI(title="billing")
 app.add_middleware(ActorContextMiddleware, strict=True)
+app.add_middleware(RequestLogMiddleware, connect=connect)
 
 
 class RefundRequest(BaseModel):
