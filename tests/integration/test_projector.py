@@ -103,8 +103,14 @@ def test_same_source_id_from_different_services_are_distinct(clean_crm):
     assert projection_total("c1") == Decimal("1100.00")
 
 
-def test_checkpoint_fires_before_each_apply(clean_crm):
-    """Ordering the apply is what makes staleness schedulable."""
+def test_checkpoints_fire_while_the_projection_is_still_stale(clean_crm):
+    """Ordering both the poll and the apply is what makes staleness schedulable.
+
+    before_poll came later than this test did: without it, whether the projector
+    found any events depended on how long its worker's imports happened to take.
+    Both checkpoints must fire while the projection still reads 0 -- either one
+    firing afterwards would order something no agent could observe.
+    """
     seen = []
     src = FakeSource("billing", [_event(1, amount="600.00")])
 
@@ -113,10 +119,10 @@ def test_checkpoint_fires_before_each_apply(clean_crm):
 
     apply_pending({"billing": src}, checkpoint=checkpoint)
 
-    assert seen == [("crm.before_apply_event", Decimal("0"))], (
-        "checkpoint must fire while the projection is still stale; firing after "
-        "the apply would order nothing an agent could observe"
-    )
+    assert seen == [
+        ("crm.before_poll", Decimal("0")),
+        ("crm.before_apply_event", Decimal("0")),
+    ], f"unexpected checkpoint sequence: {seen}"
 
 
 def test_source_is_marked_applied_only_after_the_projection_commits(clean_crm):
