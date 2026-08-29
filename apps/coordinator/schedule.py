@@ -54,6 +54,16 @@ class Schedule:
         return self._pointer >= len(self._steps)
 
     @property
+    def known_actors(self) -> set[str]:
+        """Actors named anywhere in the declared steps.
+
+        Lets the coordinator distinguish an unknown actor (client sent a bad
+        identity -> 400) from a declared actor arriving at an occurrence that was
+        never declared (schedule conflict -> 409).
+        """
+        return {actor for actor, _ in self._steps}
+
+    @property
     def pointer(self) -> int:
         return self._pointer
 

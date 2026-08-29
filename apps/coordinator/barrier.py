@@ -26,12 +26,35 @@ class BarrierTimeout(Exception):
     """
 
 
+class BarrierAborted(Exception):
+    """The run was aborted. Parked waiters are woken but never released.
+
+    Waking a parked waiter on abort is not the same as releasing it -- the
+    distinction is the whole point of failing closed.
+    """
+
+
 class Barrier:
     def __init__(self, schedule: Schedule) -> None:
         self._schedule = schedule
         self._lock = threading.Lock()
         self._parked: dict[Key, threading.Event] = {}
         self._release_order: list[Key] = []
+        self._aborted: str | None = None
+
+    @property
+    def aborted(self) -> str | None:
+        return self._aborted
+
+    def abort(self, reason: str) -> None:
+        """Mark the run aborted and wake every parked waiter without releasing."""
+        with self._lock:
+            if self._aborted is None:
+                self._aborted = reason
+            parked = list(self._parked.values())
+            self._parked.clear()
+        for event in parked:
+            event.set()
 
     def wait(
         self, actor_id: str, checkpoint: str, timeout: float | None = None
@@ -40,9 +63,12 @@ class Barrier:
 
         Raises UndeclaredOccurrence (from Schedule) for an unknown actor,
         unknown checkpoint, or an occurrence beyond the declared count.
-        Raises BarrierTimeout if the release never comes.
+        Raises BarrierAborted if the run was aborted, BarrierTimeout if the
+        release never comes.
         """
         with self._lock:
+            if self._aborted is not None:
+                raise BarrierAborted(self._aborted)
             occurrence, is_next = self._schedule.arrive(actor_id, checkpoint)
             key: Key = (actor_id, checkpoint, occurrence)
             if is_next:
@@ -60,6 +86,10 @@ class Barrier:
                 f"schedule={self._schedule.schedule_id} waiter={key} was never "
                 f"released; pointer expects {expected}; still parked: {dump}"
             )
+
+        # Woken. Distinguish an actual release from an abort-wake.
+        if self._aborted is not None:
+            raise BarrierAborted(self._aborted)
         return occurrence
 
     def waiters(self) -> list[Key]:

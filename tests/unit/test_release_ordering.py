@@ -20,7 +20,7 @@ import time
 
 import pytest
 
-from apps.coordinator.barrier import Barrier, BarrierTimeout
+from apps.coordinator.barrier import Barrier, BarrierAborted, BarrierTimeout
 from apps.coordinator.schedule import Schedule
 
 CP_A = "billing.after_read_before_decide"
@@ -140,6 +140,45 @@ def test_waiter_that_is_never_released_times_out_with_a_dump():
     # The dump must name the parked waiter, or every failure presents as a hang.
     assert "B" in str(exc.value)
     assert CP_B in str(exc.value)
+
+
+def test_parked_waiter_woken_by_abort_is_not_released():
+    """Waking on abort must never look like a release.
+
+    Written after the implementation rather than before it -- noted so the gap is
+    visible. The distinction it guards is the whole point of failing closed.
+    """
+    schedule = Schedule("P2", [("A", CP_A), ("B", CP_B)])
+    barrier = Barrier(schedule)
+    outcome: list[str] = []
+
+    def parked():
+        try:
+            barrier.wait("B", CP_B, timeout=5.0)
+            outcome.append("released")
+        except BarrierAborted:
+            outcome.append("aborted")
+
+    t = threading.Thread(target=parked, daemon=True)
+    t.start()
+    time.sleep(0.1)
+    assert barrier.waiters() == [("B", CP_B, 0)]
+
+    barrier.abort("test abort")
+    t.join(timeout=5.0)
+
+    assert outcome == ["aborted"], "abort-wake was mistaken for a release"
+    assert barrier.release_order() == [], "abort must not record a release"
+
+
+def test_wait_after_abort_raises_immediately():
+    schedule = Schedule("P2", [("A", CP_A), ("B", CP_B)])
+    barrier = Barrier(schedule)
+    barrier.abort("test abort")
+
+    with pytest.raises(BarrierAborted):
+        barrier.wait("A", CP_A, timeout=1.0)
+    assert barrier.release_order() == []
 
 
 def test_completed_schedule_reports_no_parked_waiters():
