@@ -13,41 +13,15 @@ That is the third green signal, alongside task success and reconciliation. Their
 agreement is the finding.
 """
 
-import pytest
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
-    InMemorySpanExporter,
-)
 
 from libs.barrier.middleware import actor_identity, outbound_headers
 from libs.tracing import current_traceparent, span, use_traceparent
 
 
-# OpenTelemetry's global tracer provider can only be set ONCE per process --
-# later calls are ignored. Installing a fresh provider per test therefore
-# silently routed spans to the first test's exporter, and later tests saw zero
-# spans. One provider, one exporter, cleared between tests.
-_EXPORTER = InMemorySpanExporter()
-_PROVIDER = TracerProvider()
-_PROVIDER.add_span_processor(SimpleSpanProcessor(_EXPORTER))
-trace.set_tracer_provider(_PROVIDER)
 
 
-@pytest.fixture(autouse=True)
-def _clear_spans():
-    _EXPORTER.clear()
-    yield
-    _EXPORTER.clear()
-
-
-def _recording_tracer():
-    return _EXPORTER
-
-
-def test_a_span_records_the_actor():
-    exporter = _recording_tracer()
+def test_a_span_records_the_actor(spans):
+    exporter = spans
 
     with actor_identity("A", "S1"):
         with span("agent.decide"):
@@ -59,10 +33,9 @@ def test_a_span_records_the_actor():
     assert spans[-1].attributes["acl.schedule_id"] == "S1"
 
 
-def test_traceparent_is_carried_on_outbound_calls():
+def test_traceparent_is_carried_on_outbound_calls(spans):
     """Identity and trace context travel together, or the trace fragments at
     the first service boundary and stops being distributed at all."""
-    _recording_tracer()
 
     with actor_identity("A", "S1"):
         with span("agent.decide"):
@@ -72,9 +45,9 @@ def test_traceparent_is_carried_on_outbound_calls():
     assert headers["X-Actor-Id"] == "A"
 
 
-def test_a_downstream_span_joins_the_same_trace():
+def test_a_downstream_span_joins_the_same_trace(spans):
     """The property that makes it one trace rather than several."""
-    exporter = _recording_tracer()
+    exporter = spans
 
     with actor_identity("A", "S1"):
         with span("agent.decide"):
@@ -94,13 +67,13 @@ def test_a_downstream_span_joins_the_same_trace():
     )
 
 
-def test_spans_report_success_when_nothing_errored():
+def test_spans_report_success_when_nothing_errored(spans):
     """The finding, in miniature.
 
     A locally-correct action on stale data produces a completely healthy trace.
     Nothing here is broken, which is exactly why tracing cannot see the breach.
     """
-    exporter = _recording_tracer()
+    exporter = spans
 
     with actor_identity("B", "S1"):
         with span("agent.decide"):
@@ -119,9 +92,9 @@ def test_spans_report_success_when_nothing_errored():
         assert s.events == (), f"{s.name} recorded an event; expected none"
 
 
-def test_an_actual_failure_is_recorded():
+def test_an_actual_failure_is_recorded(spans):
     """Tracing must still catch real failures, or its silence proves nothing."""
-    exporter = _recording_tracer()
+    exporter = spans
 
     with actor_identity("A", "S1"):
         try:

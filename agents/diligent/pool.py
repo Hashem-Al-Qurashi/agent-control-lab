@@ -128,6 +128,15 @@ def _run_job(job, outbox: mp.Queue) -> None:
             from agents.diligent.clients import HttpServiceClient, ReservationClient
             from agents.diligent.policy import CaseConfig, Clients, run_case
             from libs.barrier.middleware import actor_identity
+            from libs.tracing import configure_export, span
+
+            # The worker is a separate spawned process with its own tracer
+            # provider, so it must configure export itself. Without this the
+            # agent emits nothing, every service request starts its OWN trace,
+            # and the claim that one trace spans the decision and every call it
+            # caused is false in exactly the way that is hard to notice: the
+            # per-service traces all look fine.
+            configure_export("agent")
 
             spec = payload
             from libs.barrier.client import BarrierClient
@@ -187,7 +196,9 @@ def _run_job(job, outbox: mp.Queue) -> None:
                 retry_on_failure=bool(spec.get("retry_on_failure", False)),
             )
             try:
-                with actor_identity(spec["actor_id"], spec["schedule_id"]):
+                with actor_identity(spec["actor_id"], spec["schedule_id"]), span(
+                    "agent.run_case", case_id=spec["case_id"]
+                ):
                     clients = Clients(
                         billing,
                         ledger,

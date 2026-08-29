@@ -110,3 +110,55 @@ services:
       retries: 20
     tmpfs:
       - /var/lib/postgresql/data
+
+  # --- observability ------------------------------------------------------
+  #
+  # Behind a profile, so `make up` and the test suite are unaffected: these two
+  # containers are for looking at traces, not for producing any result. Start
+  # them with `make observability`.
+  #
+  # Span export is off in the services unless OTEL_EXPORTER_OTLP_ENDPOINT is
+  # set, so nothing here changes what the schedules do.
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: acl-tempo
+    profiles: ["observability"]
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"   # OTLP gRPC, where the services export
+      - "127.0.0.1:3200:3200"   # query API, used by Grafana and by the test
+    tmpfs:
+      # Tempo runs as uid 10001; a root-owned tmpfs fails with
+      # "mkdir /var/tempo/blocks: permission denied" at startup.
+      - /var/tempo:uid=10001,gid=10001
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready | grep -q ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: acl-grafana
+    profiles: ["observability"]
+    depends_on:
+      tempo:
+        condition: service_healthy
+    environment:
+      # Anonymous admin: this binds to 127.0.0.1 and displays synthetic data.
+      # Same boundary as ADR-002 -- it does not extend past a local lab.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor
+    volumes:
+      - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      # 3000 is a common default and was already taken on the dev machine;
+      # 3001 keeps this out of the way of whatever else is running.
+      - "127.0.0.1:3001:3000"
+    tmpfs:
+      - /var/lib/grafana

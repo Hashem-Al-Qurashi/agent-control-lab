@@ -1,0 +1,86 @@
+{
+  "uid": "acl-traces",
+  "title": "Agent Control Lab \u2014 traces",
+  "tags": [
+    "agent-control-lab"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "What this dashboard is for",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### The point is what you will **not** find here\n\nRun `make reproduce SCHEDULE=S1`, then open its trace below.\n\nEvery span succeeds. No error, no exception, no retry, no anomalous latency. It is a clean distributed transaction \u2014 and the business state at the end of it is wrong by $100.\n\nCompare it to `S1H`, which is the same staleness with a coordination authority. **The two traces look alike.** Tracing shows what the system did, not whether it was allowed to. That is why `docs/READINESS-MODEL.md` separates observability from business correctness \u2014 a system can be fully instrumented and still have nothing that reports this class of failure."
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent traces (all services)",
+      "datasource": {
+        "type": "tempo",
+        "uid": "acl-tempo"
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "acl-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ resource.service.name != \"\" }",
+          "limit": 50,
+          "tableType": "traces"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Spans that reported an error \u2014 expected to stay empty during S1",
+      "description": "S1 breaches the aggregate with no failing span. A non-empty result here means something actually broke, which is a different finding.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "acl-tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tempo",
+            "uid": "acl-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ status = error }",
+          "limit": 50,
+          "tableType": "traces"
+        }
+      ]
+    }
+  ]
+}

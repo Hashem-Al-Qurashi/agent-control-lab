@@ -117,10 +117,30 @@ class ActorContextMiddleware:
         actor_token = _actor.set(actor)
         schedule_token = _schedule.set(schedule)
         try:
-            await self.app(scope, receive, send)
+            await self._traced(scope, receive, send, headers)
         finally:
             _actor.reset(actor_token)
             _schedule.reset(schedule_token)
+
+    async def _traced(self, scope: Scope, receive: Receive, send: Send,
+                      headers: dict[str, str]) -> None:
+        """Emit one server span per request, joined to the caller's trace.
+
+        Instrumented here rather than in each handler for one reason: a handler
+        someone forgets to decorate produces no span and no error, so the gap is
+        invisible. Every request passes through this middleware.
+
+        The span continues the inbound `traceparent` when there is one, which is
+        what makes the trace span the service boundary instead of fragmenting
+        into unrelated per-service traces.
+        """
+        from libs.tracing import span, use_traceparent
+
+        route = scope.get("path", "")
+        method = scope.get("method", "")
+        with use_traceparent(headers.get("traceparent")):
+            with span(f"{method} {route}", route=route):
+                await self.app(scope, receive, send)
 
 
 async def _reject(send: Send, detail: str) -> None:

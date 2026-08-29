@@ -18,6 +18,7 @@ be correlated afterwards.
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -29,6 +30,51 @@ from opentelemetry.trace.propagation.tracecontext import (
 )
 
 _propagator = TraceContextTextMapPropagator()
+
+# Installed at most once per process. OpenTelemetry permits set_tracer_provider
+# once and then warns rather than failing, so a second call would silently drop
+# the first provider's spans -- data loss with no error.
+_EXPORT_CONFIGURED = False
+_RESOURCE = None
+
+
+def configure_export(service_name: str, endpoint: str | None = None) -> bool:
+    """Install an OTLP exporter. Returns whether this call installed one.
+
+    Off unless an endpoint is configured. A suite that silently ships spans to a
+    collector is slower, flakier, and dependent on a container nobody asked for,
+    so the default is no exporter and the no-op provider that implies.
+    """
+    global _EXPORT_CONFIGURED, _RESOURCE
+
+    endpoint = endpoint if endpoint is not None else os.environ.get(
+        "OTEL_EXPORTER_OTLP_ENDPOINT"
+    )
+    if not endpoint or _EXPORT_CONFIGURED:
+        return False
+
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter,
+    )
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    # Without service.name every span reads "unknown_service" and a trace cannot
+    # be attributed to the service that emitted it.
+    _RESOURCE = Resource.create({"service.name": service_name})
+    provider = TracerProvider(resource=_RESOURCE)
+    provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+    )
+    trace.set_tracer_provider(provider)
+    _EXPORT_CONFIGURED = True
+    return True
+
+
+def installed_resource():
+    """The resource attached to the installed provider, or None if export is off."""
+    return _RESOURCE
 
 
 def tracer():

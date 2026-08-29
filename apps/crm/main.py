@@ -20,11 +20,17 @@ from pydantic import BaseModel
 
 from apps.crm.db import connect
 from apps.crm.projector import apply_pending
+from libs.tracing import configure_export
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
 from libs.service_common import checkpoint as _checkpoint
 
 SERVICE = "crm"
+
+# Span export is off unless OTEL_EXPORTER_OTLP_ENDPOINT is set. Without this
+# call every span in a running service goes to the no-op provider and nothing
+# collects it -- tracing that is real in tests and absent in deployment.
+configure_export("crm")
 
 app = FastAPI(title="crm")
 app.add_middleware(ActorContextMiddleware, strict=True)

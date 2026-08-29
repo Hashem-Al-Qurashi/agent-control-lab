@@ -76,7 +76,20 @@ def test_outbound_headers_forward_the_inbound_actor():
     """
     with TestClient(_app()) as c:
         r = c.get("/outbound", headers={"X-Actor-Id": "B", "X-Schedule-Id": "P3"})
-    assert r.json()["headers"] == {"X-Actor-Id": "B", "X-Schedule-Id": "P3"}
+    forwarded = r.json()["headers"]
+
+    assert forwarded["X-Actor-Id"] == "B"
+    assert forwarded["X-Schedule-Id"] == "P3"
+
+    # traceparent joined this set once the services actually emitted spans. This
+    # assertion used to be an exact-equality check that passed BECAUSE nothing
+    # was instrumented: current_traceparent() had no active span to inject, so
+    # it returned None and the header was silently dropped. The equality was
+    # pinning the broken state.
+    assert "traceparent" in forwarded, (
+        "identity is forwarded but trace context is not; the trace fragments "
+        "at this service boundary"
+    )
 
 
 def test_context_does_not_leak_between_requests():

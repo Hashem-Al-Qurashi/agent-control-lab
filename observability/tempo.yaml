@@ -1,0 +1,36 @@
+# Tempo receives OTLP directly. A separate otel-collector would be one more
+# component to configure correctly for no gain at this size -- the collector
+# earns its place when you need fan-out, sampling or redaction, and none of
+# those apply to a single-machine lab.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  # Short so a trace is queryable seconds after the run that produced it,
+  # rather than after the default multi-minute flush. A reviewer running
+  # `make reproduce SCHEDULE=S1` should not have to wait to see the trace.
+  max_block_duration: 5m
+  complete_block_timeout: 15s
+
+compactor:
+  compaction:
+    block_retention: 24h
+
+storage:
+  trace:
+    # Poll faster than the default 5m. Tempo warns that a complete_block_timeout
+    # below blocklist_poll returns 404 for traces that are flushed but not yet
+    # visible to the querier -- which would look like "the span never arrived".
+    blocklist_poll: 5s
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal

@@ -21,10 +21,16 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from apps.control.db import connect
+from libs.tracing import configure_export
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
 
 SERVICE = "control"
+
+# Span export is off unless OTEL_EXPORTER_OTLP_ENDPOINT is set. Without this
+# call every span in a running service goes to the no-op provider and nothing
+# collects it -- tracing that is real in tests and absent in deployment.
+configure_export("control")
 
 app = FastAPI(title="control")
 app.add_middleware(ActorContextMiddleware, strict=True)
