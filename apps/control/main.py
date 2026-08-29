@@ -96,6 +96,64 @@ def reserve(req: ReserveRequest) -> dict:
             "replayed": False}
 
 
+@app.post("/reservations/{reservation_id}/release")
+def release(reservation_id: int) -> dict:
+    """Free a hold whose action did not happen.
+
+    A hold that outlives its purpose is a leak, not a safety mechanism. The
+    budget it occupies is invisible -- no effect exists anywhere -- and yet
+    legitimate later actions are refused. Worse, that refusal looks exactly like
+    the control working correctly, so nobody investigates.
+
+    Idempotent: recovery paths run more than once, and a second release must not
+    free budget a later actor has already taken.
+    """
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT state FROM reservations WHERE id = %s", (reservation_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="reservation not found")
+        if row[0] == "RELEASED":
+            conn.commit()
+            return {"id": reservation_id, "state": "RELEASED", "already": True}
+        if row[0] == "COMMITTED":
+            raise HTTPException(
+                status_code=409,
+                detail="cannot release a committed reservation: the money moved",
+            )
+        cur.execute(
+            "UPDATE reservations SET state = 'RELEASED' WHERE id = %s",
+            (reservation_id,),
+        )
+        conn.commit()
+    return {"id": reservation_id, "state": "RELEASED", "already": False}
+
+
+@app.post("/reservations/{reservation_id}/commit")
+def commit(reservation_id: int) -> dict:
+    """Mark a hold as spent. The effect landed.
+
+    A released hold cannot be committed -- there is no budget behind it, and
+    committing would create authority out of nothing.
+    """
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute("SELECT state FROM reservations WHERE id = %s", (reservation_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="reservation not found")
+        if row[0] == "RELEASED":
+            raise HTTPException(
+                status_code=409,
+                detail="cannot commit a released reservation: its budget is gone",
+            )
+        cur.execute(
+            "UPDATE reservations SET state = 'COMMITTED' WHERE id = %s",
+            (reservation_id,),
+        )
+        conn.commit()
+    return {"id": reservation_id, "state": "COMMITTED"}
+
+
 @app.get("/reservations")
 def list_reservations(case_id: str = Query(...)) -> dict:
     with connect() as conn, conn.cursor() as cur:

@@ -59,7 +59,14 @@ class Clients:
     checkpoint: Callable[[str], None] = field(default=_no_checkpoint)
     # The coordination primitive. Absent in the baseline, present in P0 --
     # and that difference is the whole contrast the experiment rests on.
-    reserve: Callable[..., bool] | None = None
+    # Returns a reservation id when granted, None when refused.
+    reserve: Callable[..., int | None] | None = None
+    # Compensation. Reserving is only safe if un-reserving is guaranteed on
+    # the paths where the effect never lands -- otherwise the hardened arm
+    # trades over-spending for invisible under-spending, which looks exactly
+    # like the control working correctly.
+    release: Callable[[int], None] | None = None
+    commit: Callable[[int], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +123,7 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
     if observed + config.amount > config.authorized_compensation:
         return
 
+    reservation_id = None
     if clients.reserve is not None:
         # Ordering the reservation explicitly. Releasing two actors in a known
         # order does NOT determine which of them reaches the control service
@@ -126,21 +134,34 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
 
         # The only difference between P2 and P0: same policy, same interleaving,
         # but an interface that can see the aggregate.
-        if not clients.reserve(
+        reservation_id = clients.reserve(
             case_id,
             config.amount,
             config.idempotency_key,
             config.authorized_compensation,
-        ):
+        )
+        if reservation_id is None:
             return
 
     target = clients.billing if config.action == "refund" else clients.ledger
     try:
-        target.create(case_id, config.amount, config.idempotency_key)
+        try:
+            target.create(case_id, config.amount, config.idempotency_key)
+        except Exception:
+            if not config.retry_on_failure:
+                raise
+            # Outcome ambiguous: the effect may or may not be durable. Retrying
+            # with the SAME idempotency key is the correct response -- it either
+            # completes the operation or returns the one already recorded, never
+            # a second one.
+            target.create(case_id, config.amount, config.idempotency_key)
     except Exception:
-        if not config.retry_on_failure:
-            raise
-        # Outcome ambiguous: the effect may or may not be durable. Retrying with
-        # the SAME idempotency key is the correct response -- it either completes
-        # the operation or returns the one already recorded, never a second one.
-        target.create(case_id, config.amount, config.idempotency_key)
+        # The effect did not land. Free the budget it was holding, then let the
+        # failure propagate: swallowing it here would look like a decline and
+        # the run would draw a wrong conclusion.
+        if reservation_id is not None and clients.release is not None:
+            clients.release(reservation_id)
+        raise
+
+    if reservation_id is not None and clients.commit is not None:
+        clients.commit(reservation_id)

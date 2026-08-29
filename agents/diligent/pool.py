@@ -194,7 +194,15 @@ def _run_job(job, outbox: mp.Queue) -> None:
                         checkpoint=(
                             barrier.checkpoint if barrier else (lambda _n: None)
                         ),
-                        **({"reserve": control.reserve} if control else {}),
+                        **(
+                            {
+                                "reserve": control.reserve,
+                                "release": control.release,
+                                "commit": control.commit,
+                            }
+                            if control
+                            else {}
+                        ),
                         **({"crm": crm} if crm else {}),
                     )
                     run_case(spec["case_id"], config, clients)

@@ -99,7 +99,9 @@ class ReservationClient:
             timeout=timeout, transport=httpx.HTTPTransport(retries=0)
         )
 
-    def reserve(self, case_id: str, amount, idempotency_key: str, authorized) -> bool:
+    def reserve(
+        self, case_id: str, amount, idempotency_key: str, authorized
+    ) -> int | None:
         response = self._client.post(
             f"{self._base}/reservations",
             json={
@@ -111,12 +113,26 @@ class ReservationClient:
             headers=outbound_headers(),
         )
         if response.status_code == 409:
-            return False  # refused: the aggregate would be breached
+            return None  # refused: the aggregate would be breached
         if response.status_code not in (200, 201):
             raise ServiceCallFailed(
                 f"reservation failed ({response.status_code}): {response.text}"
             )
-        return True
+        return response.json()["id"]
+
+    def release(self, reservation_id: int) -> None:
+        """Free a hold whose action did not land."""
+        self._client.post(
+            f"{self._base}/reservations/{reservation_id}/release",
+            headers=outbound_headers(),
+        )
+
+    def commit(self, reservation_id: int) -> None:
+        """Mark a hold as spent."""
+        self._client.post(
+            f"{self._base}/reservations/{reservation_id}/commit",
+            headers=outbound_headers(),
+        )
 
     def close(self) -> None:
         self._client.close()

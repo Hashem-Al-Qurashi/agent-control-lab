@@ -1,0 +1,57 @@
+# S1H -- S1's exact scenario, hardened. MUST PASS.
+#
+# S1's failure is different in kind from P2's. P2 was a timing race: both actors
+# read before either wrote. S1 is not a race at all -- B reads strictly after A
+# has fully committed, and is wrong anyway because the view it was given had not
+# caught up.
+#
+# P0 showed a reservation fixes the race. This asks whether the same primitive
+# fixes staleness, which is not obviously the same problem.
+#
+# It does, and the reason matters: the control service holds AUTHORITATIVE
+# reservation state, not a derived view. B's projection still reads 0 -- it is
+# just as stale as in S1 -- but B must now ask an authority that cannot be
+# behind, and is refused.
+#
+# So the fix is not "make the projection faster". A faster projection is still a
+# projection. The fix is having an authority for the aggregate at all.
+
+schedule_id: S1H
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+use_reservations: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s1h-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: s1h-b
+  - id: P
+    action: project
+
+expect:
+  verdict: CLEAN
+  committed_total: "600.00"
+
+steps:
+  # A completes entirely, exactly as in S1.
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, agent.before_reserve]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # B starts only now, and still reads a projection showing 0 -- identical
+  # staleness to S1. The difference is what it does next.
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [B, agent.before_reserve]
+  # B is refused by the control service and declines. No ledger steps follow.
+  # The projection catches up afterwards, as in S1.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
