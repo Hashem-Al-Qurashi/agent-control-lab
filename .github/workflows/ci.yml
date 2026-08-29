@@ -1,0 +1,122 @@
+# CI for agent-control-lab.
+#
+# The repo's whole claim is that a stranger can clone it and reproduce the
+# result. CI is where that claim is checked on a machine nobody tuned.
+#
+# Ordered cheapest-first so a lint error does not wait three minutes behind a
+# schedule suite. The schedule suite runs last because it is the only stage that
+# needs every service alive at once.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Five databases, matching docker-compose.yml. They differ in BOTH host port
+    # and database name -- test_topology asserts that, because one config typo
+    # pointing two services at one database would turn every result into an
+    # artifact.
+    services:
+      billing-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: billing
+          POSTGRES_PASSWORD: billing
+          POSTGRES_DB: billing
+        ports: ["55433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U billing -d billing"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      ledger-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        ports: ["55434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ledger -d ledger"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      control-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: control
+          POSTGRES_PASSWORD: control
+          POSTGRES_DB: control
+        ports: ["55435:5432"]
+        options: >-
+          --health-cmd "pg_isready -U control -d control"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      crm-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm
+          POSTGRES_DB: crm
+        ports: ["55436:5432"]
+        options: >-
+          --health-cmd "pg_isready -U crm -d crm"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+      entitlements-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: entitlements
+          POSTGRES_PASSWORD: entitlements
+          POSTGRES_DB: entitlements
+        ports: ["55437:5432"]
+        options: >-
+          --health-cmd "pg_isready -U entitlements -d entitlements"
+          --health-interval 2s --health-timeout 3s --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn httpx psycopg2-binary pydantic pytest \
+                      pyyaml pyjwt opentelemetry-api opentelemetry-sdk pyflakes
+
+      # Cheapest first. A dead import should not wait behind five containers.
+      - name: Lint
+        run: python -m pyflakes apps/ libs/ agents/ oracle/ schedules/ tests/
+
+      - name: Unit tests
+        run: python -m pytest tests/unit -q
+
+      # Documents cite tests, schedules, ADRs and make targets. Prose does not
+      # fail on its own, so this is what keeps those citations true.
+      - name: Document integrity
+        run: python -m pytest tests/unit/test_docs_integrity.py -q
+
+      - name: Migrate
+        run: make migrate
+
+      # Unproven instrumentation would taint every verdict below.
+      - name: Oracle calibration
+        run: make calibrate
+
+      - name: Integration tests
+        run: python -m pytest tests/integration -q
+
+      # Last: the only stage needing every service alive at once.
+      - name: Schedules
+        run: python -m pytest tests/schedules -q
+
+      # The anomaly that invalidates the method. Run explicitly rather than
+      # buried in the suite so a failure is unmissable in the job list.
+      - name: Replay determinism
+        env:
+          ACL_REPLAYS: "5"
+        run: python -m pytest tests/schedules/test_p4_determinism.py -q
