@@ -98,11 +98,11 @@ def _run_job(job, outbox: mp.Queue) -> None:
                     sources = {
                         "billing": HttpEventSource(
                             spec["billing_url"], spec["actor_id"],
-                            spec["schedule_id"],
+                            spec["schedule_id"], spec.get("case_id"),
                         ),
                         "ledger": HttpEventSource(
                             spec["ledger_url"], spec["actor_id"],
-                            spec["schedule_id"],
+                            spec["schedule_id"], spec.get("case_id"),
                         ),
                     }
                     applied = apply_pending(

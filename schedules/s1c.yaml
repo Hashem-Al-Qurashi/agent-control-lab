@@ -46,5 +46,8 @@ steps:
   - [P, crm.before_apply_event]
   - [B, agent.before_reads]
   - [B, agent.after_reads_before_act]
-  - [B, ledger.after_read_before_decide]
-  - [B, ledger.after_commit_before_ack]
+  # No ledger steps. B sees the caught-up projection, declines, and never calls
+  # create -- so those checkpoints correctly never fire. Declaring them anyway
+  # left the pointer waiting on steps that could not arrive. S1C's own test only
+  # asserted the verdict, so it passed; the results generator's stricter
+  # release-order check is what caught it. Same class of mistake as S6.

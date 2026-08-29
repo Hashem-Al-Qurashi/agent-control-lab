@@ -39,16 +39,23 @@ class HttpEventSource:
     a projector with direct database access would quietly dissolve it.
     """
 
-    def __init__(self, base_url: str, actor: str, schedule: str) -> None:
+    def __init__(
+        self, base_url: str, actor: str, schedule: str, case_id: str | None = None
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._headers = {"X-Actor-Id": actor, "X-Schedule-Id": schedule}
+        self._case_id = case_id
 
     def unapplied(self) -> list[dict]:
         import httpx
 
         response = httpx.get(
             f"{self._base}/events",
-            params={"unapplied_only": True},
+            params=(
+                {"unapplied_only": True, "case_id": self._case_id}
+                if self._case_id
+                else {"unapplied_only": True}
+            ),
             headers=self._headers,
             timeout=30.0,
         )

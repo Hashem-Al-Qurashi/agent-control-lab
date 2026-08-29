@@ -107,6 +107,7 @@ def run_schedule(
                     {
                         "actor_id": actor["id"],
                         "schedule_id": spec["schedule_id"],
+                        "case_id": case_id,
                         "coordinator_url": coordinator,
                         "billing_url": stack["billing"],
                         "ledger_url": stack["ledger"],

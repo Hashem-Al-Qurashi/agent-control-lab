@@ -173,7 +173,7 @@ def health() -> dict:
 
 
 @app.get("/events")
-def list_events(unapplied_only: bool = True) -> dict:
+def list_events(unapplied_only: bool = True, case_id: str | None = None) -> dict:
     """Expose this service's outbox.
 
     The projector reads events over HTTP rather than reaching into this
@@ -181,11 +181,21 @@ def list_events(unapplied_only: bool = True) -> dict:
     services, and that constraint is the premise of the experiment -- a
     projector with direct database access would quietly dissolve it.
     """
-    clause = "WHERE applied_at IS NULL" if unapplied_only else ""
+    # Scoped to a case. Without this a projector consumes events from every
+    # earlier run, hits more checkpoints than its schedule declared, and the
+    # barrier aborts it -- while the run still produces numbers that look real.
+    where, params = [], []
+    if unapplied_only:
+        where.append("applied_at IS NULL")
+    if case_id is not None:
+        where.append("case_id = %s")
+        params.append(case_id)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, case_id, actor_id, service, event_type, entity_id, amount "
-            f"FROM outbox {clause} ORDER BY id"
+            f"FROM outbox {clause} ORDER BY id",
+            params,
         )
         events = [
             {
