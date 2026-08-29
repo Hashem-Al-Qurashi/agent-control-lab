@@ -1,0 +1,48 @@
+# Two independently-owned databases. This is the whole point of the experiment:
+# there is no shared transaction boundary between Billing and Ledger, so no
+# single CHECK constraint or row lock can see the aggregate.
+#
+# They differ in BOTH host (container) and database name. Task 10 asserts this,
+# because one config typo pointing both services at the same database would turn
+# every result into an artifact.
+#
+# Postgres 16-alpine rather than the 14 named in the plan: 14 was inferred from
+# the local psql *client* version. 16-alpine is already present locally and the
+# experiment depends on no version-specific behaviour.
+
+services:
+  billing-db:
+    image: postgres:16-alpine
+    container_name: acl-billing-db
+    environment:
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing
+      POSTGRES_DB: billing
+    ports:
+      - "127.0.0.1:55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billing"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      # Ephemeral: every run starts from a verified clean slate. Leftover rows
+      # push a sum over the ceiling regardless of concurrency.
+      - /var/lib/postgresql/data
+
+  ledger-db:
+    image: postgres:16-alpine
+    container_name: acl-ledger-db
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      POSTGRES_DB: ledger
+    ports:
+      - "127.0.0.1:55434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d ledger"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
