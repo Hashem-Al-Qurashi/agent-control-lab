@@ -18,7 +18,9 @@ to the endpoint.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Iterator
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -35,6 +37,23 @@ class MissingActorIdentity(Exception):
     Raised rather than returning a stale or default value: a silently wrong
     actor id is the exact failure this module exists to prevent.
     """
+
+
+@contextmanager
+def actor_identity(actor: str, schedule: str) -> Iterator[None]:
+    """Bind identity outside an inbound request.
+
+    Used by agents, which originate calls rather than serving them, and by tests.
+    Scoped and reset rather than set globally, so identity can never leak from
+    one case into the next.
+    """
+    actor_token = _actor.set(actor)
+    schedule_token = _schedule.set(schedule)
+    try:
+        yield
+    finally:
+        _actor.reset(actor_token)
+        _schedule.reset(schedule_token)
 
 
 def current_actor() -> str | None:
