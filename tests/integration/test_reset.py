@@ -15,21 +15,29 @@ from apps.billing.db import run_migrations as billing_migrations
 from apps.billing.db import truncate_all as billing_truncate
 from apps.control.db import run_migrations as control_migrations
 from apps.control.db import truncate_all as control_truncate
+from apps.crm.db import run_migrations as crm_migrations
+from apps.crm.db import truncate_all as crm_truncate
 from apps.ledger.db import run_migrations as ledger_migrations
 from apps.ledger.db import truncate_all as ledger_truncate
 from oracle.quiescence import OWNER_DSNS
 
 CONTROL_DSN = "postgresql://control:control@127.0.0.1:55435/control"
+CRM_DSN = "postgresql://crm:crm@127.0.0.1:55436/crm"
 
 EXPECTED_EMPTY = {
-    "billing": ["refunds", "decision_log", "request_log"],
-    "ledger": ["credits", "decision_log", "request_log"],
+    "billing": ["refunds", "decision_log", "request_log", "outbox"],
+    "ledger": ["credits", "decision_log", "request_log", "outbox"],
     "control": ["reservations", "request_log"],
+    "crm": ["compensation_projection", "applied_events", "request_log"],
 }
 
 
 def _dsn(service):
-    return CONTROL_DSN if service == "control" else OWNER_DSNS[service]
+    if service == "control":
+        return CONTROL_DSN
+    if service == "crm":
+        return CRM_DSN
+    return OWNER_DSNS[service]
 
 
 def _count(service, table):
@@ -57,6 +65,7 @@ def migrated():
     billing_migrations()
     ledger_migrations()
     control_migrations()
+    crm_migrations()
 
 
 def test_every_table_is_empty_after_reset():
@@ -67,10 +76,13 @@ def test_every_table_is_empty_after_reset():
     _seed("control", "INSERT INTO reservations (case_id, actor_id, "
                      "idempotency_key, amount, state) "
                      "VALUES ('x','A','v-1','1.00','HELD')")
+    _seed("crm", "INSERT INTO compensation_projection (case_id, total) "
+                 "VALUES ('x','1.00')")
 
     billing_truncate()
     ledger_truncate()
     control_truncate()
+    crm_truncate()
 
     for service, tables in EXPECTED_EMPTY.items():
         for table in tables:

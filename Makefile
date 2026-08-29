@@ -40,8 +40,9 @@ migrate:
 	@$(PY) -c "from apps.billing.db import run_migrations as b; \
 from apps.ledger.db import run_migrations as l; \
 from apps.control.db import run_migrations as c; \
+from apps.crm.db import run_migrations as m; \
 from oracle.quiescence import grant_readonly; \
-b(); l(); c(); grant_readonly(); print('schemas ready')"
+b(); l(); c(); m(); grant_readonly(); print('schemas ready')"
 
 test:
 	$(PY) -m pytest tests/ -q

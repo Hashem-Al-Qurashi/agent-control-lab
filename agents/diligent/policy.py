@@ -48,6 +48,12 @@ def _no_checkpoint(name: str) -> None:
 class Clients:
     billing: ServiceClient
     ledger: ServiceClient
+    # The integration point the agent was actually given. When present it is the
+    # agent's view of what compensation exists, because in real systems an agent
+    # usually cannot query another team's authoritative store -- it reads a CRM
+    # or reporting view. That view lags. The agent is no less diligent for
+    # trusting it; the staleness belongs to the interface, not the policy.
+    crm: ServiceClient | None = None
     # Injected so the policy stays pure and unit-testable with fakes. The
     # barrier is a property of the experiment, not of the agent's logic.
     checkpoint: Callable[[str], None] = field(default=_no_checkpoint)
@@ -71,7 +77,16 @@ class CaseConfig:
 
 
 def observed_compensation(case_id: str, clients: Clients) -> Decimal:
-    """Read every authoritative system. Order is fixed so schedules can name it."""
+    """Read everything the agent has access to. Order is fixed so schedules can
+    name it.
+
+    When a CRM view is supplied, that IS the access the agent has -- it does not
+    also read the authoritative stores, because modelling an agent with access
+    it would not have in production would make the staleness unreachable and the
+    experiment uninteresting.
+    """
+    if clients.crm is not None:
+        return clients.crm.total_committed(case_id)
     return clients.billing.total_committed(case_id) + clients.ledger.total_committed(
         case_id
     )
