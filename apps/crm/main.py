@@ -19,7 +19,7 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 from apps.crm.db import connect
-from apps.crm.projector import apply_pending, projection_total
+from apps.crm.projector import apply_pending
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
 from libs.service_common import checkpoint as _checkpoint
