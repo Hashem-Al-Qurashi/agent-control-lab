@@ -147,3 +147,58 @@ def test_the_contrast_in_one_assertion(clean_state):
         "every conventional signal is green and the business state must still "
         "be wrong -- that gap is the entire Stage 1 result"
     )
+
+
+def test_enforcement_was_actually_active_during_the_run(clean_state):
+    """Guards the strongest form of the Stage 1 claim.
+
+    S1 says the breach happened DESPITE proper authentication and
+    authorization. That is only true if the services were enforcing during the
+    run. Asserting the property rather than trusting the config value: a future
+    change could set ACL_ENFORCE_POLICY=0 and every schedule would still pass
+    while the claim quietly became false.
+    """
+    import httpx
+
+    # An unauthenticated write against the live service must be refused.
+    unauth = httpx.post(
+        f"{clean_state['billing']}/refunds",
+        json={"case_id": "probe", "amount": "1.00", "idempotency_key": "probe-1"},
+        headers={"X-Actor-Id": "PROBE", "X-Schedule-Id": "PROBE"},
+        timeout=30.0,
+    )
+    assert unauth.status_code == 401, (
+        f"billing accepted an unauthenticated write ({unauth.status_code}) -- "
+        "enforcement is off, so 'despite proper authorization' is not true of "
+        "these runs"
+    )
+
+    # A token without the needed scope must also be refused.
+    from libs.identity import issue_token
+
+    weak = httpx.post(
+        f"{clean_state['billing']}/refunds",
+        json={"case_id": "probe", "amount": "1.00", "idempotency_key": "probe-2"},
+        headers={
+            "X-Actor-Id": "PROBE",
+            "X-Schedule-Id": "PROBE",
+            "Authorization": f"Bearer {issue_token('PROBE', ['invoice:read'], 'acme')}",
+            "X-Tenant-Id": "acme",
+        },
+        timeout=30.0,
+    )
+    assert weak.status_code == 403
+
+
+def test_s1_violates_while_every_action_was_authorized(clean_state):
+    """The Stage 1 sentence, end to end.
+
+    Enforcement active, every action authenticated with a signed token and
+    authorized by a policy the agent does not evaluate -- and the aggregate is
+    still wrong.
+    """
+    outcome = run_schedule("S1", clean_state)
+    assert_actors_succeeded(outcome)
+
+    assert outcome.result.verdict is Verdict.VIOLATION
+    assert outcome.result.realized_overage == Decimal("100.00")

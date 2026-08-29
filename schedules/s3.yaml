@@ -1,0 +1,73 @@
+# S3 -- partial catch-up. MUST PRODUCE A VIOLATION.
+#
+# S1 showed a fully-lagged projection breaks the invariant. S1C showed a fully
+# caught-up one does not. S3 asks the question between them: is PARTIAL
+# catch-up enough?
+#
+# Three actors against a 1000 ceiling:
+#   A refunds 400   (event published)
+#   B credits 300   (event published)
+#   P applies ONE event -- A's only
+#   C credits 400   reading a projection that shows 400
+#
+# C sees 400, concludes 400 + 400 = 800 fits, and commits. Actual total is
+# 400 + 300 + 400 = 1100.
+#
+# This matters because it rules out a comfortable reading of S1 -- that the
+# problem only arises when the projection is completely cold. It is not
+# all-or-nothing: the exposure tracks how far behind the view is, and a
+# partially-current view is still a wrong view.
+#
+# Every action is individually within the 500 single-action threshold, so none
+# of them needs approval authority. Per-action authorization is satisfied
+# throughout.
+
+schedule_id: S3
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "400.00"
+    idempotency_key: s3-a
+  - id: B
+    action: credit
+    amount: "300.00"
+    idempotency_key: s3-b
+  - id: C
+    action: credit
+    amount: "400.00"
+    idempotency_key: s3-c
+  - id: P
+    action: project
+
+expect:
+  verdict: VIOLATION
+  committed_total: "1100.00"
+  realized_overage: "100.00"
+
+steps:
+  # A completes.
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # B completes. Both events now exist, none applied.
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [B, ledger.after_read_before_decide]
+  - [B, ledger.after_commit_before_ack]
+  # The projector applies A's event only, then is held before the second.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
+  # C reads a partially-current projection: 400 visible, 300 still invisible.
+  - [C, agent.before_reads]
+  - [C, agent.after_reads_before_act]
+  - [C, ledger.after_read_before_decide]
+  - [C, ledger.after_commit_before_ack]
+  # Only now does the projection finish catching up.
+  - [P, crm.before_apply_event]
+  - [P, crm.before_apply_event]

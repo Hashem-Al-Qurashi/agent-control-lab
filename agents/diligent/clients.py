@@ -24,19 +24,39 @@ class ServiceCallFailed(Exception):
 
 
 class HttpServiceClient:
-    def __init__(self, base_url: str, collection: str, timeout: float = 60.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        collection: str,
+        timeout: float = 60.0,
+        token: str | None = None,
+        tenant: str | None = None,
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._collection = collection
+        # Carried on every call so the service can authenticate and authorize.
+        # Without it the Stage 1 claim -- the failure occurred DESPITE proper
+        # authorization -- would rest on unit tests rather than on the runs.
+        self._token = token
+        self._tenant = tenant
         self._client = httpx.Client(
             timeout=timeout,
             transport=httpx.HTTPTransport(retries=0),
         )
 
+    def _headers(self) -> dict[str, str]:
+        headers = dict(outbound_headers())
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        if self._tenant:
+            headers["X-Tenant-Id"] = self._tenant
+        return headers
+
     def total_committed(self, case_id: str) -> Decimal:
         response = self._client.get(
             f"{self._base}/{self._collection}",
             params={"case_id": case_id},
-            headers=outbound_headers(),
+            headers=self._headers(),
         )
         if response.status_code != 200:
             raise ServiceCallFailed(
@@ -52,7 +72,7 @@ class HttpServiceClient:
                 "amount": str(amount),
                 "idempotency_key": idempotency_key,
             },
-            headers=outbound_headers(),
+            headers=self._headers(),
         )
         if response.status_code not in (200, 201):
             raise ServiceCallFailed(

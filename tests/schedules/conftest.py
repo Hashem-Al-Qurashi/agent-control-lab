@@ -83,7 +83,13 @@ def stack():
     coord_url = f"http://127.0.0.1:{coord_port}"
     _wait_for(f"{coord_url}/waiters")
 
-    service_env = {"BARRIER_ENABLED": "1", "BARRIER_URL": coord_url}
+    # Enforcement ON for schedules. Otherwise "the failure occurred despite
+    # proper authorization" would rest on unit tests rather than on the runs.
+    service_env = {
+        "BARRIER_ENABLED": "1",
+        "BARRIER_URL": coord_url,
+        "ACL_ENFORCE_POLICY": "1",
+    }
     billing_port, ledger_port = _free_port(), _free_port()
     billing = _spawn("apps.billing.main:app", billing_port, service_env, workers=4)
     ledger = _spawn("apps.ledger.main:app", ledger_port, service_env, workers=4)

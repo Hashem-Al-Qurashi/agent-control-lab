@@ -95,8 +95,26 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             spec = payload
             from libs.barrier.client import BarrierClient
 
-            billing = HttpServiceClient(spec["billing_url"], "refunds")
-            ledger = HttpServiceClient(spec["ledger_url"], "credits")
+            from libs.identity import issue_token
+
+            tenant = spec.get("tenant", "acme")
+            # Scoped to what this actor does, including approval authority so
+            # amounts above the single-action threshold are properly authorized
+            # rather than merely unenforced.
+            token = issue_token(
+                spec["actor_id"],
+                [
+                    "refund:create", "refund:approved",
+                    "credit:create", "credit:approved",
+                ],
+                tenant,
+            )
+            billing = HttpServiceClient(
+                spec["billing_url"], "refunds", token=token, tenant=tenant
+            )
+            ledger = HttpServiceClient(
+                spec["ledger_url"], "credits", token=token, tenant=tenant
+            )
             barrier = (
                 BarrierClient(spec["coordinator_url"])
                 if spec.get("coordinator_url")
@@ -109,7 +127,9 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             )
             # The read model the agent was given, when the schedule supplies one.
             crm = (
-                HttpServiceClient(spec["crm_url"], "compensation")
+                HttpServiceClient(
+                    spec["crm_url"], "compensation", token=token, tenant=tenant
+                )
                 if spec.get("crm_url")
                 else None
             )
