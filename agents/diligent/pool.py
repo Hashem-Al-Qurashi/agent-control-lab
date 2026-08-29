@@ -38,6 +38,21 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
         job = inbox.get()
         if job == _SHUTDOWN:
             return
+        try:
+            _run_job(job, outbox)
+        except BaseException as exc:  # noqa: BLE001
+            # Nothing may escape without a result. An exception raised while
+            # setting a job up -- before its own error handling -- used to kill
+            # the worker silently, and collect() then blocked forever. A hang is
+            # strictly worse than a failure: it hides which schedule broke and
+            # burns the whole suite instead of one test.
+            actor = "unknown"
+            if isinstance(job, tuple) and isinstance(job[1], dict):
+                actor = job[1].get("actor_id", "unknown")
+            outbox.put(("error", actor, f"worker crashed: {type(exc).__name__}: {exc}"))
+
+
+def _run_job(job, outbox: mp.Queue) -> None:
         kind, payload = job
         if kind == "echo_pid":
             outbox.put(os.getpid())
@@ -128,13 +143,13 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
             # the action rather than merely permitting everything.
             token = issue_token(
                 spec["actor_id"],
-                spec.get(
-                    "scopes",
-                    [
-                        "refund:create", "refund:approved",
-                        "credit:create", "credit:approved",
-                    ],
-                ),
+                # `or`, not .get(default): the runner always sets this key, so a
+                # default would never apply when the value is None.
+                spec.get("scopes")
+                or [
+                    "refund:create", "refund:approved",
+                    "credit:create", "credit:approved",
+                ],
                 tenant,
             )
             billing = HttpServiceClient(

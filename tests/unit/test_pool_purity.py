@@ -106,3 +106,40 @@ def test_pool_shutdown_stops_all_workers():
     pool.shutdown()
 
     assert pool.live_workers() == 0
+
+
+def test_a_worker_crash_surfaces_as_an_error_rather_than_hanging():
+    """A hang is strictly worse than a failure.
+
+    An exception raised while SETTING UP a job -- before the job's own error
+    handling -- used to kill the worker without putting anything on the outbox,
+    and collect() then blocked forever. That burned an entire suite run and hid
+    which schedule was broken.
+
+    Regression test for a real hang: a None scopes value reached issue_token,
+    raised outside the inner try, and killed the worker silently.
+    """
+    pool = AgentPool(size=1)
+    try:
+        # A job whose setup cannot succeed: no urls, no config.
+        pool.dispatch_diligent({"actor_id": "X", "schedule_id": "S"})
+        outcome = pool.collect(1, timeout=30.0)
+    finally:
+        pool.shutdown()
+
+    assert outcome[0][0] == "error", f"expected an error result, got {outcome}"
+    assert outcome[0][1] == "X", "the failing actor must be identifiable"
+
+
+def test_the_pool_survives_a_crashing_job_and_serves_the_next_one():
+    """One bad job must not take the pool down with it."""
+    pool = AgentPool(size=1)
+    try:
+        pool.dispatch_diligent({"actor_id": "X", "schedule_id": "S"})
+        pool.collect(1, timeout=30.0)
+
+        pid = pool.submit_echo_pid(timeout=30.0)
+    finally:
+        pool.shutdown()
+
+    assert isinstance(pid, int)
