@@ -69,7 +69,9 @@ def load(schedule_id: str) -> dict:
     return yaml.safe_load((SCHEDULES / f"{schedule_id.lower()}.yaml").read_text())
 
 
-def run_schedule(schedule_id: str, stack: dict, case_id: str | None = None) -> RunOutcome:
+def run_schedule(
+    schedule_id: str, stack: dict, case_id: str | None = None
+) -> RunOutcome:
     spec = load(schedule_id)
     case_id = case_id or f"case-{schedule_id.lower()}"
     coordinator = stack["coordinator"]

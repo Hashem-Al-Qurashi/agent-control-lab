@@ -18,7 +18,9 @@ from __future__ import annotations
 import ast
 import pathlib
 
-MUTABLE_LITERALS = (ast.Dict, ast.List, ast.Set, ast.DictComp, ast.ListComp, ast.SetComp)
+MUTABLE_LITERALS = (
+    ast.Dict, ast.List, ast.Set, ast.DictComp, ast.ListComp, ast.SetComp,
+)
 ENV_NAMES = {"environ", "getenv"}
 
 

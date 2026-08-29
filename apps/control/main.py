@@ -40,6 +40,12 @@ class ReserveRequest(BaseModel):
 
 @app.post("/reservations", status_code=201)
 def reserve(req: ReserveRequest) -> dict:
+    """Hold budget against the case, or refuse if it would breach the ceiling.
+
+    A refusal is a normal outcome, not an error. 409 means the aggregate
+    would have been exceeded and the caller should decline -- which is
+    exactly the behaviour P0 demonstrates.
+    """
     actor = current_actor()
     with connect() as conn, conn.cursor() as cur:
         # Serialise all reservation decisions for this case. The check and the
