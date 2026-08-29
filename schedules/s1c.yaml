@@ -1,0 +1,50 @@
+# S1C -- S1's control. MUST PASS.
+#
+# Identical to S1 in every respect except WHEN the projection catches up. Here
+# the projector applies both events before B is allowed to read, so B observes
+# 600 and correctly declines its 500.
+#
+# This is what makes S1 a finding rather than an artefact. The pair isolates a
+# single variable: not the agent, not the ordering, not the amounts -- only
+# whether the read model had caught up at the moment the agent consulted it.
+#
+# Same role P0 plays for P2: without it, "you gave the agent stale data and it
+# acted on stale data" is a tautology rather than a result.
+
+schedule_id: S1C
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s1c-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: s1c-b
+  - id: P
+    action: project
+
+expect:
+  verdict: CLEAN
+  committed_total: "600.00"
+
+steps:
+  # A completes entirely, including acknowledgement.
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # The projection catches up BEFORE B reads. This is the only difference.
+  # One apply, not two: only A's event exists at this point -- B has not
+  # committed yet, so there is nothing else to fold in.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [B, ledger.after_read_before_decide]
+  - [B, ledger.after_commit_before_ack]

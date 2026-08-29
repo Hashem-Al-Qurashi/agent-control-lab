@@ -23,6 +23,8 @@ import pytest
 from apps.billing.db import run_migrations as billing_migrations
 from apps.control.db import run_migrations as control_migrations
 from apps.control.db import truncate_all as control_truncate
+from apps.crm.db import run_migrations as crm_migrations
+from apps.crm.db import truncate_all as crm_truncate
 from apps.billing.db import truncate_all as billing_truncate
 from apps.ledger.db import run_migrations as ledger_migrations
 from apps.ledger.db import truncate_all as ledger_truncate
@@ -67,6 +69,7 @@ def stack():
     billing_migrations()
     ledger_migrations()
     control_migrations()
+    crm_migrations()
     grant_readonly()
 
     # The oracle proves itself before it is allowed to judge anything.
@@ -90,20 +93,26 @@ def stack():
     control = _spawn(
         "apps.control.main:app", control_port, {"BARRIER_ENABLED": "0"}, workers=4
     )
+    # CRM participates in schedules -- its projector holds a checkpoint -- so it
+    # runs with the barrier enabled, unlike the control service.
+    crm_port = _free_port()
+    crm = _spawn("apps.crm.main:app", crm_port, service_env, workers=4)
 
     probe = {"X-Actor-Id": "PROBE", "X-Schedule-Id": "PROBE"}
     _wait_for(f"http://127.0.0.1:{billing_port}/health", probe)
     _wait_for(f"http://127.0.0.1:{ledger_port}/health", probe)
     _wait_for(f"http://127.0.0.1:{control_port}/health", probe)
+    _wait_for(f"http://127.0.0.1:{crm_port}/health", probe)
 
     yield {
         "coordinator": coord_url,
         "billing": f"http://127.0.0.1:{billing_port}",
         "ledger": f"http://127.0.0.1:{ledger_port}",
         "control": f"http://127.0.0.1:{control_port}",
+        "crm": f"http://127.0.0.1:{crm_port}",
     }
 
-    for proc in (billing, ledger, control, coord):
+    for proc in (billing, ledger, control, crm, coord):
         proc.send_signal(signal.SIGTERM)
         try:
             proc.wait(timeout=15)
@@ -120,5 +129,6 @@ def clean_state(stack):
     billing_truncate()
     ledger_truncate()
     control_truncate()
+    crm_truncate()
     yield stack
     httpx.post(f"{stack['coordinator']}/reset", timeout=10.0)

@@ -91,6 +91,17 @@ def run_schedule(
     pool = AgentPool(size=len(spec["actors"]))
     try:
         for actor in spec["actors"]:
+            if actor["action"] == "project":
+                pool.dispatch_projector(
+                    {
+                        "actor_id": actor["id"],
+                        "schedule_id": spec["schedule_id"],
+                        "coordinator_url": coordinator,
+                        "billing_url": stack["billing"],
+                        "ledger_url": stack["ledger"],
+                    }
+                )
+                continue
             pool.dispatch_diligent(
                 {
                     "case_id": case_id,
@@ -104,7 +115,12 @@ def run_schedule(
                     "billing_url": stack["billing"],
                     "coordinator_url": coordinator,
                     "control_url": (
-                        stack.get("control") if spec.get("use_reservations") else None
+                        stack.get("control")
+                        if spec.get("use_reservations")
+                        else None
+                    ),
+                    "crm_url": (
+                        stack.get("crm") if spec.get("use_projection") else None
                     ),
                     "ledger_url": stack["ledger"],
                 }

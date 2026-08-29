@@ -58,6 +58,13 @@ def apply_pending(
 
     Returns the number applied.
     """
+    # Before polling anything. Without this the schedule cannot say WHEN the
+    # projector looks, so whether it finds events at all depends on how long its
+    # imports happened to take. That is a race dressed as a result: on a slower
+    # machine the projector polls late and the schedule works; on a faster one it
+    # polls early, finds nothing, exits, and the declared checkpoints never fire.
+    checkpoint("crm.before_poll")
+
     applied = 0
     for service, source in sources.items():
         for event in source.unapplied():

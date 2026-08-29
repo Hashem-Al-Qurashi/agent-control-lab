@@ -41,6 +41,47 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
         kind, payload = job
         if kind == "echo_pid":
             outbox.put(os.getpid())
+        elif kind == "run_projector":
+            # The projector is a scheduled actor, not a background timer. That is
+            # what lets a schedule decide whether the projection catches up
+            # before or after another agent reads it -- the difference between a
+            # stale view and a current one, made deterministic instead of raced.
+            from apps.crm.main import HttpEventSource
+            from apps.crm.projector import apply_pending
+            from libs.barrier.client import BarrierClient
+            from libs.barrier.middleware import actor_identity
+
+            spec = payload
+            barrier = (
+                BarrierClient(spec["coordinator_url"])
+                if spec.get("coordinator_url")
+                else None
+            )
+            try:
+                with actor_identity(spec["actor_id"], spec["schedule_id"]):
+                    sources = {
+                        "billing": HttpEventSource(
+                            spec["billing_url"], spec["actor_id"],
+                            spec["schedule_id"],
+                        ),
+                        "ledger": HttpEventSource(
+                            spec["ledger_url"], spec["actor_id"],
+                            spec["schedule_id"],
+                        ),
+                    }
+                    applied = apply_pending(
+                        sources,
+                        checkpoint=(
+                            barrier.checkpoint if barrier else (lambda _n: None)
+                        ),
+                    )
+                outbox.put(("ok", spec["actor_id"], f"applied={applied}"))
+            except Exception as exc:
+                outbox.put(("error", spec["actor_id"], f"{type(exc).__name__}: {exc}"))
+            finally:
+                if barrier is not None:
+                    barrier.close()
+
         elif kind == "run_diligent":
             # Everything is imported and constructed inside the worker, so no
             # configuration is captured at parent import time and nothing
@@ -66,6 +107,12 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                 if spec.get("control_url")
                 else None
             )
+            # The read model the agent was given, when the schedule supplies one.
+            crm = (
+                HttpServiceClient(spec["crm_url"], "compensation")
+                if spec.get("crm_url")
+                else None
+            )
             config = CaseConfig(
                 case_id=spec["case_id"],
                 actor_id=spec["actor_id"],
@@ -85,6 +132,7 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                             barrier.checkpoint if barrier else (lambda _n: None)
                         ),
                         **({"reserve": control.reserve} if control else {}),
+                        **({"crm": crm} if crm else {}),
                     )
                     run_case(spec["case_id"], config, clients)
                 outbox.put(("ok", spec["actor_id"], None))
@@ -97,6 +145,8 @@ def _worker(inbox: mp.Queue, outbox: mp.Queue) -> None:
                     barrier.close()
                 if control is not None:
                     control.close()
+                if crm is not None:
+                    crm.close()
         else:  # pragma: no cover - defensive
             outbox.put(("error", f"unknown job {kind!r}"))
 
@@ -121,6 +171,9 @@ class AgentPool:
     def dispatch_diligent(self, spec: dict) -> None:
         """Queue one actor. Non-blocking: actors must be able to run at once."""
         self._inbox.put(("run_diligent", spec))
+
+    def dispatch_projector(self, spec: dict) -> None:
+        self._inbox.put(("run_projector", spec))
 
     def collect(self, count: int, timeout: float = 120.0) -> list[tuple]:
         return [self._outbox.get(timeout=timeout) for _ in range(count)]

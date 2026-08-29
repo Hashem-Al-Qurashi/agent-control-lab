@@ -1,0 +1,60 @@
+# S1 -- the Stage 1 thesis. MUST PRODUCE A VIOLATION.
+#
+# This is the case Stage 0 could not reach. In P2 the two actors overlapped, and
+# P1 showed that sequencing them fixes it. Here B does NOT overlap A at all:
+#
+#   A reads, decides, commits, and is fully acknowledged
+#   ONLY THEN does B begin reading
+#
+# Sequencing is supposed to be the fix. It is not, because B does not read the
+# authoritative store -- it reads the CRM projection, which is the integration
+# point it was given, and that projection has not applied A's event yet.
+#
+# So B observes 0, correctly concludes 500 fits under 1000, and commits.
+# Aggregate: 1100. Every action authorised, idempotent, locally correct, and
+# strictly ordered after the one before it.
+#
+# The projector P is a scheduled actor, so the lag is deterministic rather than
+# raced. Here its apply is declared LAST -- after B has already acted on the
+# stale view. S1C is the same schedule with P moved earlier, and stays clean.
+
+schedule_id: S1
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_projection: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s1-a
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: s1-b
+  - id: P
+    action: project
+
+expect:
+  verdict: VIOLATION
+  committed_total: "1100.00"
+  realized_overage: "100.00"
+
+steps:
+  # A completes entirely, including acknowledgement.
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, billing.after_read_before_decide]
+  - [A, billing.after_commit_before_ack]
+  # B starts only now. It reads the projection, which is still behind.
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [B, ledger.after_read_before_decide]
+  - [B, ledger.after_commit_before_ack]
+  # The projection catches up only after the damage is done. before_poll is
+  # declared here so the schedule controls WHEN the projector looks -- otherwise
+  # whether it finds events depends on how long its imports took.
+  - [P, crm.before_poll]
+  - [P, crm.before_apply_event]
+  - [P, crm.before_apply_event]
