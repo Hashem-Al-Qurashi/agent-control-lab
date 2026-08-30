@@ -142,7 +142,7 @@ there is an explicit checkpoint.
 | [READINESS-MODEL.md](docs/READINESS-MODEL.md) | Ten domains, each citing what this lab measured — including where it held and still wasn't enough |
 | [RUNBOOKS.md](docs/RUNBOOKS.md) · [SLOS.md](docs/SLOS.md) · [INCIDENT-001.md](docs/INCIDENT-001.md) | Operations: one runbook per alert that can fire, objectives split from zero-tolerance invariants, and a worked incident from this build |
 | [WHITESTONE-ASSESSMENT-SAMPLE.pdf](docs/WHITESTONE-ASSESSMENT-SAMPLE.pdf) | The assessment as a client would receive it — `make assessment-pdf` rebuilds it |
-| [visual/diligent-agent.html](docs/visual/diligent-agent.html) | Interactive walkthrough of the interleaving — pinned to the measured results by a test |
+| **[Interactive walkthrough ↗](https://hashem-al-qurashi.github.io/agent-control-lab/)** | Step through P2, S1, P0 and S1H in the browser — no install. Source: [docs/visual/](docs/visual/diligent-agent.html), pinned to the measured results by a test |
 | [LLM-ARMS.md](docs/LLM-ARMS.md) | Arms C and D: the violation reproduces with a real model 5/5, and the control holds it 5/5 |
 | [DEEP-DIVE.md](docs/DEEP-DIVE.md) | The 20-minute argument, with the instrument defended before the results and the hard questions answered |
 | [PRIOR-INCIDENTS.md](docs/PRIOR-INCIDENTS.md) | Four documented incidents read at primary source — with what each does *not* support, and what was rejected |
