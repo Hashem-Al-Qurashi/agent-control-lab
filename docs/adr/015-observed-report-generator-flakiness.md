@@ -97,3 +97,24 @@ describes.**
 
 Still open, and now with a concrete thing to fix in both places rather than a
 mystery to reproduce.
+
+
+---
+
+## Update — 2026-08-30 (third): ADR-007 closed, and this one likely with it
+
+ADR-007 is resolved. The barrier never diverged across roughly 700 replays,
+several hundred of them under active concurrent truncation. Every divergence it
+ever recorded was the measurement losing its evidence, and the determinism suite
+now reports `CorruptSample` instead of a false finding.
+
+This ADR's symptom is the same shape one layer up: the report generator
+truncates all four databases between schedules, and its failures are always a
+projector's final checkpoint appearing not to have run — a read describing a run
+it was not part of.
+
+The same remedy applies and has **not** been implemented here.
+`assert_schedule_executed` should distinguish *"this schedule did not execute"*
+from *"the record of its execution was cleared underneath it."* Until it does
+this stays open — but as a known instrumentation gap with a named fix, not a
+mystery.

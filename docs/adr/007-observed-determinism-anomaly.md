@@ -1,6 +1,6 @@
 # ADR-007 — An observed, unreproduced determinism anomaly
 
-**Status:** open · **Date:** 2026-08-29
+**Status:** CLOSED (resolved 2026-08-30, see the sixth update) · **Date:** 2026-08-29
 
 Recorded rather than closed. The project's own rule is that a divergence in
 replay determinism invalidates the method and must not be explained away, so
