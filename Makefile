@@ -74,6 +74,11 @@ reproduce:
 		$(PY) -m pytest tests/schedules/test_$(shell echo $(SCHEDULE) | tr A-Z a-z).py -q -s; \
 	fi
 
+# Run this ALONE. ADR-007 reproduced replay divergence when another process was
+# writing to and truncating the same databases concurrently, and could not
+# reproduce it otherwise. 20 replays bounds the divergence rate only to roughly
+# 14%; the anomaly fires far more rarely, so raise ACL_REPLAYS to say anything
+# stronger.
 determinism:
 	ACL_REPLAYS=$${ACL_REPLAYS:-20} $(PY) -m pytest \
 		tests/schedules/test_p4_determinism.py -q

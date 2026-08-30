@@ -57,3 +57,20 @@ central claim is that a signal removed is worse than a failure observed.
 Until one of those, this stays **open**, alongside ADR-007. Two open
 intermittencies is worth stating plainly: this harness is deterministic in
 isolation and has not been proven deterministic in aggregate.
+
+
+---
+
+## Update — 2026-08-30: likely the same defect as ADR-007
+
+ADR-007 has now reproduced its divergence under active concurrent database
+access, and failed to reproduce it under idle co-tenancy. This ADR'''s symptom
+fits that condition exactly: it appears only in the multi-schedule generator --
+the one place where schedules run back-to-back against shared databases with
+truncation between them -- and never when a schedule runs alone.
+
+The review that produced this hypothesis suggested both ADRs might be one defect
+with two presentations. ADR-007'''s reproduction supports that, and points at the
+same place: whatever active database concurrency does to checkpoint ordering.
+
+Still open, and now more likely to close together than separately.

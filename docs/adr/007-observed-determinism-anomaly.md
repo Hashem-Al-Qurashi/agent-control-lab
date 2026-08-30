@@ -207,3 +207,62 @@ smaller place to look.
 
 Not investigated. Recorded so the next attempt starts from a better hypothesis
 than either ADR had alone.
+
+---
+
+## Update — 2026-08-30 (fourth): reproduced, under a named condition
+
+The anomaly has been reproduced. A controlled pair at `ACL_REPLAYS=100`:
+
+| Condition | Result |
+|---|---|
+| The full integration suite running concurrently against the same databases | **2 of 5 schedules diverged** — `P0`, `P1` |
+| Nothing else touching the databases | **5 passed**, 100 replays each |
+
+Both runs took ~11 minutes and differed only in whether another process was
+writing to and truncating the same Postgres instances.
+
+### Why this succeeds where the earlier attempt failed
+
+The August 30 attempt above restored `natural_stack` to session scope and did
+**not** reproduce it. That test was weaker than it looked: session scope left two
+**idle** extra services holding connections. This run had a second process
+actively inserting, truncating and reading across all five databases.
+
+So the refined finding is narrower and more useful than "contention":
+
+> **Idle co-tenancy does not reproduce it. Concurrent writes and truncations
+> against the same databases do.**
+
+That is consistent with the original sighting, which happened during a full-suite
+run — the one context where another suite is actively using the same databases.
+
+### Why 100 replays and not 20
+
+Gate 3's statistical point is what made this findable. Twenty replays bounds the
+divergence rate only to roughly 14%; the anomaly fires far more rarely. Every
+earlier attempt to reproduce it used twenty. The sample was too small the whole
+time, and no amount of repeating it at that size would have helped.
+
+### What this still does not establish
+
+**One paired observation, not a series.** N=1 at the run level in each condition,
+albeit 500 replays within each. It should be repeated before the mechanism is
+treated as settled, and the actual divergence diff was again not captured — the
+failing run was the contaminated one, and its output was summarised rather than
+kept.
+
+The concrete mechanism also remains unidentified. "Another process is writing to
+the same database" is a condition, not an explanation: what specifically about
+that changes an application-level checkpoint ordering has not been traced.
+
+### Consequence, and it is actionable
+
+The determinism suite must not run concurrently with anything else touching
+these databases, and this is now the documented reason. That is a real
+constraint on how the suite is run, not a precaution — and it is exactly the
+kind of dependency that was invisible while the anomaly was unexplained.
+
+**Status stays OPEN**, with a materially better hypothesis than it has had at any
+point: reproducible under active database concurrency, absent without it,
+mechanism untraced.
