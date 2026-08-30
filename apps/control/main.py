@@ -15,12 +15,15 @@ that. Enforcement is mechanism; deciding what to enforce is not.
 
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from apps.control.db import connect
+from apps.control.expiry import expire_due
+from libs.clock import Clock, SystemClock
 from libs.tracing import configure_export
 from libs.barrier.middleware import ActorContextMiddleware, current_actor
 from libs.request_log import RequestLogMiddleware
@@ -37,11 +40,20 @@ app.add_middleware(ActorContextMiddleware, strict=True)
 app.add_middleware(RequestLogMiddleware, connect=connect)
 
 
+# Swappable so tests can control deadlines without sleeping. Bounded-time
+# behaviour tested by waiting is slow, flaky, and proves only that an interval
+# elapsed -- not that the code consulted a deadline.
+_clock: Clock = SystemClock()
+
+
 class ReserveRequest(BaseModel):
     case_id: str
     amount: Decimal
     idempotency_key: str
     authorized_compensation: Decimal
+    # Opt-in, so every existing caller keeps the behaviour it was written
+    # against. A hold with no deadline is never reaped.
+    ttl_seconds: int | None = None
 
 
 @app.post("/reservations", status_code=201)
@@ -57,6 +69,12 @@ def reserve(req: ReserveRequest) -> dict:
         # Serialise all reservation decisions for this case. The check and the
         # insert must be one atomic step, or this service reproduces the race.
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (req.case_id,))
+
+        # Reclaim lapsed holds INSIDE the lock, before the sum is taken. A
+        # purely background reaper would leave a window as long as its interval
+        # during which a dead agent's budget still blocks a live one -- and that
+        # window is indistinguishable from the control correctly refusing.
+        expire_due(cur, _clock)
 
         cur.execute(
             "SELECT id, amount, state FROM reservations WHERE idempotency_key = %s",
@@ -89,11 +107,15 @@ def reserve(req: ReserveRequest) -> dict:
                 ),
             )
 
+        expires_at = None
+        if req.ttl_seconds is not None:
+            expires_at = _clock.now() + datetime.timedelta(seconds=req.ttl_seconds)
+
         cur.execute(
             "INSERT INTO reservations "
-            "(case_id, actor_id, idempotency_key, amount, state) "
-            "VALUES (%s, %s, %s, %s, 'HELD') RETURNING id",
-            (req.case_id, actor, req.idempotency_key, req.amount),
+            "(case_id, actor_id, idempotency_key, amount, state, expires_at) "
+            "VALUES (%s, %s, %s, %s, 'HELD', %s) RETURNING id",
+            (req.case_id, actor, req.idempotency_key, req.amount, expires_at),
         )
         row_id = cur.fetchone()[0]
         conn.commit()
