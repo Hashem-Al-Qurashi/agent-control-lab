@@ -338,3 +338,65 @@ this ADR was written. Not "scheduling may be nondeterministic" — the evidence 
 says it is not. Rather: "the determinism test can report a divergence that is an
 artifact of its own measurement." An instrument problem, in an ADR that spent its
 life suspecting the system.
+
+---
+
+## Update — 2026-08-30 (sixth): resolved, and the answer was the instrument
+
+The fifth update named the mechanism and proposed moving the decision-log read
+inside the run. That was **implemented and did not work**, which is worth
+recording because it is what produced the real answer.
+
+With the read captured inside `run_schedule`, the same hostile load still
+produced 5 failures — with the diff now *inverted* (replay 0 empty, replay 1
+populated). Moving the read only narrows the window; it cannot close one that an
+external process can open at any point during the run.
+
+### The actual resolution
+
+No fingerprint placement is safe against another process truncating the tables.
+So the instrument stops trying to be immune and starts **telling the two apart**:
+
+```
+CorruptSample: replay 2: 600.00 committed but no transitions recorded.
+Something truncated decision_log during the run -- this sample is destroyed,
+not divergent. Run the determinism suite alone.
+```
+
+Two checks, because one was not enough. The first catches money committed with
+no transitions recorded. That missed the case where the load truncated *both*
+tables, leaving a sample that is internally consistent — zero committed, empty
+log — and therefore invisible to any self-consistency test. The second compares
+against the reference replay: a run recording nothing where replay 0 recorded
+something did not behave differently, it lost its evidence.
+
+### Measured
+
+| Condition | Before | After |
+|---|---|---|
+| Clean | 5 passed | **7 passed** |
+| Hostile concurrent truncation | 5 "divergences" | **6 corruption reports, 0 divergences** |
+
+### What is now established
+
+**The barrier is deterministic.** Across roughly 700 replays, including several
+hundred under a process actively writing to and truncating the same databases,
+`release_order` — the record of which actor was released at which checkpoint in
+what order — never varied once. Not in a single observed sample.
+
+Every "divergence" this ADR ever recorded was the measurement losing its
+evidence. The ADR spent its life suspecting the scheduler and the scheduler was
+never at fault.
+
+### What this is not
+
+The guard is **diagnosis, not immunity**. A sufficiently destructive concurrent
+process can still leave a sample that looks plausible, and no in-process check
+can rule that out. Isolation remains the precondition — `make determinism` says
+so — and the guard exists to make a violated precondition legible instead of
+looking like a scientific finding.
+
+**Status: CLOSED as an anomaly, and the remaining constraint is documented.** Not
+"the harness may be nondeterministic" — the evidence says firmly otherwise — but
+"the determinism suite requires exclusive access to these databases, and now
+says so when it does not have it."

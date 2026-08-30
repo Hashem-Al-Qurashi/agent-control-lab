@@ -26,10 +26,22 @@ import yaml
 
 from agents.diligent.pool import AgentPool
 from oracle.divergence import capture_views
+from oracle.transitions import transitions as read_transitions
 from oracle.invariants import Result, evaluate
 from oracle.quiescence import ensure_quiescent
 
 SCHEDULES = pathlib.Path(__file__).parent
+
+
+class CorruptSample(Exception):
+    """The run's own evidence was destroyed before it could be read.
+
+    Distinct from a divergence on purpose. A replay whose money moved but whose
+    decision log is empty has not behaved differently -- something truncated the
+    table underneath it. ADR-007 conflated the two for the life of the project
+    and spent that time suspecting the scheduler, when the barrier's release
+    order had in fact been identical throughout.
+    """
 
 
 class ScheduleNotExecuted(Exception):
@@ -50,6 +62,10 @@ class RunOutcome:
     parked_waiters: list
     actor_outcomes: list
     divergence: dict
+    # Captured INSIDE the run, at quiescence, rather than read afterwards. A
+    # later read can be emptied by anything that truncates these tables, and
+    # that is what ADR-007 had been reporting as a replay divergence.
+    transitions: list
 
 
 def expected_release_order(schedule_id: str) -> list[tuple[str, str, int]]:
@@ -154,6 +170,7 @@ def run_schedule(
         parked_waiters=state["waiters"],
         actor_outcomes=actor_outcomes,
         divergence=capture_views(case_id).as_dict(),
+        transitions=read_transitions(case_id),
     )
 
 
