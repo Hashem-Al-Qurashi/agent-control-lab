@@ -145,6 +145,7 @@ there is an explicit checkpoint.
 | **[Interactive walkthrough ↗](https://hashem-al-qurashi.github.io/agent-control-lab/)** | Step through P2, S1, P0 and S1H in the browser — no install. Source: [docs/visual/](docs/visual/diligent-agent.html), pinned to the measured results by a test |
 | [LLM-ARMS.md](docs/LLM-ARMS.md) | Arms C and D: the violation reproduces with a real model 5/5, and the control holds it 5/5 |
 | [DEEP-DIVE.md](docs/DEEP-DIVE.md) | The 20-minute argument, with the instrument defended before the results and the hard questions answered |
+| **[FAILURE-CATALOG.md](docs/FAILURE-CATALOG.md)** | Named failure modes with stable ids — every *reproduced* one runs via `make reproduce FAILURE=ACL-F02`, enforced by tests |
 | [PRIOR-INCIDENTS.md](docs/PRIOR-INCIDENTS.md) | Four documented incidents read at primary source — with what each does *not* support, and what was rejected |
 | [DEMO.md](docs/DEMO.md) | The 10-minute walkthrough, in order, with every command verified |
 | [OBSERVABILITY.md](docs/OBSERVABILITY.md) | Tempo + Grafana, and the defect where the library was tested and the system was uninstrumented |

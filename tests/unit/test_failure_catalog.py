@@ -142,3 +142,81 @@ def test_all_five_invariant_classes_are_represented():
     present = {e["invariant_class"] for e in _entries()}
 
     assert present == CLASSES, f"classes absent from the catalogue: {sorted(CLASSES - present)}"
+
+
+# --- the reproduce commands must actually be runnable ---------------------
+
+
+def _reproduce_commands() -> list[tuple[str, str]]:
+    return [(e["id"], e["reproduce"]) for e in _entries() if e.get("reproduce")]
+
+
+def test_every_reproduce_command_targets_something_real(declared_schedules):
+    """A command that cannot run is worse than no command: the reader tries it.
+
+    Two shapes are allowed -- a make target that exists, or a pytest path that
+    exists. Anything else is a typo nobody would notice until a demo.
+    """
+    makefile = (REPO / "Makefile").read_text()
+    targets = set(re.findall(r"^([a-z][a-z0-9-]*):", makefile, re.M))
+
+    problems = []
+    for entry_id, command in _reproduce_commands():
+        if command.startswith("make "):
+            target = command.split()[1]
+            if target not in targets:
+                problems.append(f"{entry_id}: no make target {target!r}")
+        elif command.startswith("pytest "):
+            for token in command.split():
+                if token.startswith("tests/"):
+                    path = REPO / token.split("::")[0]
+                    if not path.exists():
+                        problems.append(f"{entry_id}: no such path {token!r}")
+        else:
+            problems.append(f"{entry_id}: unrecognised command shape {command!r}")
+
+    assert not problems, "\n".join(problems)
+
+
+def test_a_schedule_command_names_the_entrys_own_schedule():
+    """Guards the copy-paste error: an entry pointing at a different schedule's
+    reproduction reads as working and demonstrates the wrong thing."""
+    problems = []
+    for entry in _entries():
+        command = entry.get("reproduce") or ""
+        match = re.search(r"SCHEDULE=(\S+)", command)
+        if match and match.group(1) not in (entry.get("schedules") or []):
+            problems.append(
+                f"{entry['id']} reproduces with SCHEDULE={match.group(1)} "
+                f"but declares schedules {entry.get('schedules')}"
+            )
+
+    assert not problems, "\n".join(problems)
+
+
+def test_the_lookup_resolves_every_id():
+    from catalog.reproduce import command_for
+
+    for entry_id, expected in _reproduce_commands():
+        assert command_for(entry_id) == expected
+
+
+def test_an_unknown_id_is_refused_rather_than_guessed():
+    from catalog.reproduce import UnknownFailure, command_for
+
+    with pytest.raises(UnknownFailure):
+        command_for("ACL-F99")
+
+
+def test_the_lookup_cuts_makes_variable_propagation():
+    """Otherwise `make reproduce FAILURE=...` recurses until something kills it.
+
+    make exports command-line variables to sub-makes via MAKEFLAGS, so a
+    delegated `make reproduce SCHEDULE=S1` saw FAILURE still set and took the
+    FAILURE branch again. Found by a 300s timeout, not by reasoning.
+    """
+    from catalog.reproduce import _child_env
+
+    env = _child_env()
+    assert "MAKEFLAGS" not in env
+    assert "FAILURE" not in env

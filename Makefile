@@ -7,7 +7,7 @@
 PY := python3
 COMPOSE := docker compose
 
-.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf test-llm observability observability-down clean
+.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf catalog test-llm observability observability-down clean
 
 help:
 	@echo "up          bring up the three databases"
@@ -16,12 +16,13 @@ help:
 	@echo "test        full suite"
 	@echo "unit        unit tests only (no databases needed)"
 	@echo "schedules   the five controls: P0 P1 P2 P3 P4"
-	@echo "reproduce   make reproduce SCHEDULE=P2"
+	@echo "reproduce   make reproduce SCHEDULE=P2  |  make reproduce FAILURE=ACL-F02"
 	@echo "determinism ACL_REPLAYS=20 replay check"
 	@echo "calibrate   prove the oracle catches a planted violation"
 	@echo "manifest    print the run manifest (isolation levels, topology)"
 	@echo "assessment-pdf  rebuild the client-facing assessment PDF"
 	@echo "observability   start Tempo + Grafana (http://127.0.0.1:3001)"
+	@echo "catalog         regenerate docs/FAILURE-CATALOG.md from catalog/failures.yaml"
 	@echo "test-llm        run the live model arms (needs DEEPSEEK_API_KEY)"
 
 up:
@@ -61,8 +62,16 @@ schedules:
 	$(PY) -m pytest tests/schedules/ -q
 
 SCHEDULE ?= P2
+FAILURE ?=
+# Two ways in: by schedule (P2) or by catalogue id (ACL-F02). The id form looks
+# the command up in catalog/failures.yaml rather than a second copy here, which
+# would drift from the catalogue the first time either changed.
 reproduce:
-	$(PY) -m pytest tests/schedules/test_$(shell echo $(SCHEDULE) | tr A-Z a-z).py -q -s
+	@if [ -n "$(FAILURE)" ]; then \
+		$(PY) catalog/reproduce.py $(FAILURE); \
+	else \
+		$(PY) -m pytest tests/schedules/test_$(shell echo $(SCHEDULE) | tr A-Z a-z).py -q -s; \
+	fi
 
 determinism:
 	ACL_REPLAYS=$${ACL_REPLAYS:-20} $(PY) -m pytest \
@@ -76,6 +85,9 @@ calibrate: migrate
 manifest: migrate
 	$(PY) -c "import json; from oracle.manifest import build_manifest; \
 	print(json.dumps(build_manifest(), indent=2))"
+
+catalog:
+	$(PY) catalog/render.py
 
 test-llm:
 	ACL_RUN_LLM=1 $(PY) -m pytest tests/schedules/test_llm_arms.py -q
