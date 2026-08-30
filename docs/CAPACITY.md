@@ -84,3 +84,34 @@ In rough order of what to try:
 3. **Partition the budget.** Sub-ledgers per actor class, reconciled centrally.
    This trades exactness for throughput and should be a last resort: the property
    being protected is that the total is *exactly* right.
+
+---
+
+## Re-measured after expiry landed in the reservation lock
+
+Phase 2 added `expire_due` to the reserve path, inside the advisory lock, so a
+dead agent's budget is already free when a live agent contends for it. That put
+an extra `UPDATE` on the critical section of every reservation — the one place
+in this system where added work is most expensive.
+
+Re-measured rather than assumed:
+
+| Concurrent agents | Granted | Total | p50 before | p50 now |
+|---:|---:|---:|---:|---:|
+| 10 | **10** | $1,000.00 | 381 ms | 382 ms |
+| 50 | **10** | $1,000.00 | 1,654 ms | 1,678 ms |
+| 100 | **10** | $1,000.00 | 3,262 ms | 3,300 ms |
+
+**The correctness property is unchanged**: exactly ten grants and exactly
+$1,000.00 at every level, which is what actually mattered. Adding work inside
+the serialising section could have broken the guarantee outright; it did not.
+
+Latency moved about 1%, inside run-to-run variation. The reason is the partial
+index: `reservations_due_idx` covers only `state = 'HELD'` rows with a deadline,
+so the reaper's scan finds nothing to do in the common case and costs almost
+nothing to establish that.
+
+**What this does not measure.** Contention when many holds *are* due at once —
+every one of these runs had zero expired holds to reclaim. A case where hundreds
+lapse simultaneously would do real work inside the lock, and that is unmeasured.
+It is the first thing to check if expiry is ever given a short TTL under load.
