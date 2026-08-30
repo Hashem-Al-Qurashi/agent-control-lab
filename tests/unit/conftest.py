@@ -33,3 +33,43 @@ def spans():
     _EXPORTER.clear()
     yield _EXPORTER
     _EXPORTER.clear()
+
+
+# --- shared repo introspection -------------------------------------------
+#
+# test_docs_integrity and test_failure_catalog both need "which tests exist".
+# A fixture rather than a duplicated helper: two copies of this drift, and the
+# copy that drifts is the one that stops catching anything.
+
+import pathlib  # noqa: E402
+import re  # noqa: E402
+
+REPO = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _scan_defined_tests() -> set[str]:
+    names = set()
+    for path in (REPO / "tests").rglob("test_*.py"):
+        names.update(re.findall(r"^def (test_[a-z0-9_]+)", path.read_text(), re.M))
+    return names
+
+
+def _scan_declared_schedules() -> set[str]:
+    ids = set()
+    for path in (REPO / "schedules").glob("*.yaml"):
+        match = re.search(r"^schedule_id:\s*(\S+)", path.read_text(), re.M)
+        if match:
+            ids.add(match.group(1))
+    return ids
+
+
+@pytest.fixture(scope="session")
+def defined_tests() -> set[str]:
+    """Every test function name defined anywhere under tests/."""
+    return _scan_defined_tests()
+
+
+@pytest.fixture(scope="session")
+def declared_schedules() -> set[str]:
+    """Every schedule_id declared in schedules/*.yaml."""
+    return _scan_declared_schedules()

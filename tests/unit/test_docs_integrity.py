@@ -14,24 +14,15 @@ import re
 
 import pytest
 
+from conftest import _scan_declared_schedules
+
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs"
 
 
-def _defined_tests() -> set[str]:
-    names = set()
-    for path in (REPO / "tests").rglob("test_*.py"):
-        names.update(re.findall(r"^def (test_[a-z0-9_]+)", path.read_text(), re.M))
-    return names
-
-
-def _declared_schedules() -> set[str]:
-    ids = set()
-    for path in (REPO / "schedules").glob("*.yaml"):
-        match = re.search(r"^schedule_id:\s*(\S+)", path.read_text(), re.M)
-        if match:
-            ids.add(match.group(1))
-    return ids
+# Scanners live in tests/unit/conftest.py as session fixtures. Two copies of
+# "which tests exist" drift, and the copy that drifts is the one that quietly
+# stops catching anything.
 
 
 def _all_docs() -> list[pathlib.Path]:
@@ -50,9 +41,9 @@ def _doc_ids() -> list[str]:
 
 
 @pytest.mark.parametrize("doc", _all_docs(), ids=_doc_ids())
-def test_every_cited_test_exists(doc):
+def test_every_cited_test_exists(doc, defined_tests):
     cited = set(re.findall(r"`(test_[a-z0-9_]+)`", doc.read_text()))
-    missing = sorted(cited - _defined_tests())
+    missing = sorted(cited - defined_tests)
 
     assert not missing, f"{doc.name} cites tests that do not exist: {missing}"
 
@@ -62,7 +53,7 @@ NOT_A_SCHEDULE = {"P4"}
 
 
 @pytest.mark.parametrize("doc", _all_docs(), ids=_doc_ids())
-def test_every_cited_schedule_exists(doc):
+def test_every_cited_schedule_exists(doc, declared_schedules):
     """Match the SHAPE of a schedule id, never an enumeration of known ones.
 
     An enumerated pattern only catches typos in ids that already exist. A
@@ -70,7 +61,7 @@ def test_every_cited_schedule_exists(doc):
     by failing to see it, which is the same vacuum as a hardcoded file list.
     """
     cited = set(re.findall(r"`([PS]\d+[A-Z]*)`", doc.read_text()))
-    missing = sorted(cited - _declared_schedules() - NOT_A_SCHEDULE)
+    missing = sorted(cited - declared_schedules - NOT_A_SCHEDULE)
 
     assert not missing, f"{doc.name} cites schedules that do not exist: {missing}"
 
@@ -88,7 +79,7 @@ def test_reproduce_commands_name_real_schedules():
     """A README instruction that cannot be run is worse than no instruction."""
     for doc in _all_docs():
         for schedule in re.findall(r"make reproduce SCHEDULE=(\S+)", doc.read_text()):
-            assert schedule in _declared_schedules(), (
+            assert schedule in _scan_declared_schedules(), (
                 f"{doc.name} tells the reader to run SCHEDULE={schedule}, "
                 "which does not exist"
             )
@@ -98,7 +89,7 @@ def test_results_report_covers_every_declared_schedule():
     """A schedule absent from the report is one nobody is reading the verdict of."""
     generator = (REPO / "tests" / "schedules" / "test_results_report.py").read_text()
     covered = set(re.findall(r'\("(\w+)", Verdict\.', generator))
-    missing = sorted(_declared_schedules() - covered)
+    missing = sorted(_scan_declared_schedules() - covered)
 
     assert not missing, f"schedules missing from the results report: {missing}"
 

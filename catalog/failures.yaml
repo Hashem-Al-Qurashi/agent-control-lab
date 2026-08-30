@@ -1,0 +1,378 @@
+# The failure catalogue — single source of truth.
+#
+# docs/FAILURE-CATALOG.md is GENERATED from this file. Never hand-edit it.
+#
+# status:
+#   reproduced  a test in this repo produces it on demand
+#   documented  observed in the wild, cited to a primary source read directly
+#   described   named and understood, NOT yet reproduced here
+#
+# The third value is the one that makes the catalogue honest. An entry claiming
+# `reproduced` that nothing reproduces is the single failure that would discredit
+# the whole artifact, so tests/unit/test_failure_catalog.py enforces it.
+
+failures:
+  - id: ACL-F01
+    name: Read-check-write race across services
+    family: concurrency
+    invariant_class: cross-service
+    symptom: >-
+      Two individually-valid actions combine past an aggregate ceiling. Each
+      agent's decision is correct; the total is not.
+    mechanism: >-
+      Both agents read before either writes. The ceiling spans two services with
+      separate databases, so no transaction and no constraint can see the sum
+      that is being violated.
+    status: reproduced
+    verified_by:
+      - test_p2_produces_a_violation
+      - test_p2_overage_is_exactly_one_hundred
+    schedules: [P2]
+    reproduce: make reproduce SCHEDULE=P2
+    monitoring_shows: >-
+      Both agents report success. Every span is OK. The reconciler finds no drift.
+    control: >-
+      An authority that can see every input to the invariant at decision time,
+      consulted before the action rather than validating after it.
+    control_verified_by:
+      - test_p0_does_not_violate_under_p2s_interleaving
+      - test_p0_and_p2_differ_only_in_the_available_interface
+
+  - id: ACL-F02
+    name: Stale read model with no concurrency at all
+    family: stale-state
+    invariant_class: cross-service
+    symptom: >-
+      An agent acting strictly after another has finished still produces an
+      invalid aggregate.
+    mechanism: >-
+      The second agent reads a projection that has not yet applied the first
+      agent's event. Its observation is wrong the instant the first commit lands,
+      and nothing tells it so.
+    status: reproduced
+    verified_by:
+      - test_s1_violates_even_though_the_actors_never_overlap
+      - test_s1_is_strictly_sequential
+      - test_s1_violates_while_every_action_was_authorized
+    schedules: [S1]
+    reproduce: make reproduce SCHEDULE=S1
+    monitoring_shows: >-
+      Identical to a healthy run. This is the entry that ends the "just stop them
+      overlapping" conversation.
+    control: >-
+      An authority holding authoritative state rather than a derived view, so
+      staleness stops being able to cause harm.
+    control_verified_by:
+      - test_s1h_is_clean
+      - test_s1h_projection_was_just_as_stale_as_in_s1
+    notes: >-
+      The flagship entry. S1C is the negative control: the same schedule with the
+      projection caught up returns CLEAN, isolating staleness as the variable.
+
+  - id: ACL-F03
+    name: A fresher view narrows the window without closing it
+    family: stale-state
+    invariant_class: eventual
+    symptom: >-
+      Partially catching the projection up reduces exposure and still permits the
+      breach.
+    mechanism: >-
+      The window stays open until a write lands somewhere else. No read closes a
+      window whose duration is owned by another system.
+    status: reproduced
+    verified_by:
+      - test_s3_violates_despite_partial_catch_up
+      - test_s3_third_actor_saw_a_partially_current_view
+    schedules: [S3]
+    reproduce: make reproduce SCHEDULE=S3
+    monitoring_shows: >-
+      Clean. Projection lag is smaller than in ACL-F02, which reads as an
+      improvement.
+    control: Same as ACL-F02 — freshness is not the lever.
+    control_verified_by:
+      - test_s1h_is_clean
+    notes: >-
+      The answer to "then make the projection faster". Exposure tracks lag; it
+      does not vanish with it.
+
+  - id: ACL-F04
+    name: Ambiguous outcome after a lost acknowledgement
+    family: ambiguous-execution
+    invariant_class: local
+    symptom: >-
+      The effect is durable but the caller never learns it, so a retry risks a
+      second economic effect.
+    mechanism: >-
+      The write commits and the acknowledgement is lost in transit. Success and
+      failure are indistinguishable from outside the boundary.
+    status: reproduced
+    verified_by:
+      - test_p3_creates_exactly_one_refund_despite_the_retry
+      - test_p3_commits_once_even_though_the_create_path_ran_twice
+    schedules: [P3]
+    reproduce: make reproduce SCHEDULE=P3
+    monitoring_shows: >-
+      A retry, which looks like ordinary transient-failure handling.
+    control: >-
+      An idempotency key enforced by a uniqueness constraint, plus no
+      application-level retry loop.
+    control_verified_by:
+      - test_p3_is_clean
+      - test_p3_is_not_reported_as_inconclusive
+    notes: >-
+      Included because it PASSES. Idempotency stops one operation applying twice;
+      it is orthogonal to two different valid operations summing past a ceiling,
+      and conflating them is the most common misdiagnosis of ACL-F01.
+
+  - id: ACL-F05
+    name: Redelivered event inflates a projection
+    family: messaging
+    invariant_class: eventual
+    symptom: >-
+      An at-least-once event applied twice makes a derived view report more than
+      was ever committed.
+    mechanism: >-
+      The projector applies an event it has already absorbed, because nothing
+      records which source events are spent.
+    status: reproduced
+    verified_by:
+      - test_s5_redelivery_does_not_move_the_projection
+      - test_s5_stays_clean
+    schedules: [S5]
+    reproduce: make reproduce SCHEDULE=S5
+    monitoring_shows: >-
+      Nothing. The projection is internally consistent; it is simply wrong.
+    control: >-
+      Applied-event bookkeeping keyed on (source service, source id), committed
+      with the projection it advances.
+    control_verified_by:
+      - test_applied_events_are_not_reclaimed
+      - test_source_is_marked_applied_only_after_the_projection_commits
+    notes: >-
+      Dangerous because it fabricates a violation with the exact shape of a real
+      one — the most damaging false positive available to this harness.
+
+  - id: ACL-F06
+    name: Events applied out of order
+    family: messaging
+    invariant_class: eventual
+    symptom: >-
+      Two events arriving in either order must converge on the same state, and a
+      projection that assumes order silently will not.
+    mechanism: >-
+      Independent producers give no cross-service ordering guarantee.
+    status: reproduced
+    verified_by:
+      - test_s4_reversed_apply_order_reaches_the_same_state
+      - test_s4_b_declined_because_it_saw_the_correct_total
+    schedules: [S4]
+    reproduce: make reproduce SCHEDULE=S4
+    monitoring_shows: Nothing.
+    control: >-
+      Commutative application — sums rather than sequence-dependent updates.
+    control_verified_by:
+      - test_reversed_order_produces_the_same_total
+    notes: >-
+      A negative control. It rules ordering out as the cause of ACL-F01, which
+      matters because "your events are out of order" is the second-most-common
+      wrong explanation.
+
+  - id: ACL-F07
+    name: Action crosses a tenant boundary
+    family: authorization
+    invariant_class: hard
+    symptom: An actor acts on a resource belonging to another customer.
+    mechanism: >-
+      Tenant is treated as an attribute to be scored rather than a boundary to be
+      denied.
+    status: reproduced
+    verified_by:
+      - test_a_cross_tenant_action_is_rejected
+      - test_cross_tenant_action_is_always_denied
+    schedules: []
+    reproduce: pytest tests/integration/test_abuse.py -q
+    monitoring_shows: A 403, which looks like the system working.
+    control: A hard deny on tenant mismatch, never a weighted decision.
+    control_verified_by:
+      - test_a_token_for_another_tenant_cannot_act_on_this_one
+    notes: One breach is a breach. This class must never be reported as a percentage.
+
+  - id: ACL-F08
+    name: A scope reused for an action it does not authorize
+    family: authorization
+    invariant_class: hard
+    symptom: >-
+      An agent holding authority for one action performs a different one.
+    mechanism: >-
+      Authorization checks that a caller is authenticated and has *some* scope,
+      rather than the scope for this action.
+    status: reproduced
+    verified_by:
+      - test_scope_for_one_action_does_not_authorize_another
+      - test_a_missing_scope_is_rejected
+    schedules: []
+    reproduce: pytest tests/integration/test_abuse.py -q
+    monitoring_shows: Nothing — the call is authenticated and succeeds.
+    control: Per-action scope evaluated by the service, never by the agent.
+    control_verified_by:
+      - test_the_policy_is_deterministic
+
+  - id: ACL-F09
+    name: Forged, tampered or self-asserted identity
+    family: authorization
+    invariant_class: hard
+    symptom: >-
+      An agent widens its own authority, making every downstream authorization
+      decision meaningless.
+    mechanism: >-
+      Identity taken from a header the caller controls, or a token whose
+      signature is not verified against a key the caller does not hold.
+    status: reproduced
+    verified_by:
+      - test_a_tampered_token_is_rejected
+      - test_a_token_signed_with_another_key_is_rejected
+      - test_the_actor_header_cannot_override_the_token_subject
+    schedules: []
+    reproduce: pytest tests/unit/test_identity_policy.py tests/integration/test_abuse.py -q
+    monitoring_shows: >-
+      Nothing, if the forgery succeeds — the actions look like a legitimate actor.
+    control: >-
+      Signed, externally-issued identity; invalid credentials rejected outright
+      rather than degraded to anonymous.
+    control_verified_by:
+      - test_an_unsigned_token_shaped_string_is_refused
+      - test_a_missing_token_is_rejected
+
+  - id: ACL-F10
+    name: A credential outliving its authority
+    family: authorization
+    invariant_class: hard
+    symptom: >-
+      A leaked or stale token keeps working indefinitely, so revocation has no
+      effect.
+    mechanism: >-
+      Tokens minted without an expiry, or an expiry verified only when present —
+      a check that passes by not applying.
+    status: reproduced
+    verified_by:
+      - test_an_expired_token_is_refused_at_the_service_boundary
+      - test_a_token_without_an_expiry_is_rejected
+    schedules: []
+    reproduce: pytest tests/unit/test_identity_policy.py -q
+    monitoring_shows: Nothing. The calls are valid.
+    control: >-
+      Lifetime enforced at the service boundary, and a credential without an
+      expiry refused rather than trusted.
+    control_verified_by:
+      - test_an_expired_token_is_a_401_not_a_500
+    notes: >-
+      Replay INSIDE the validity window remains possible here — there is no jti
+      ledger. Stated as T1's residual rather than implied away.
+
+  - id: ACL-F11
+    name: Entitlement stranded by a plan change
+    family: stale-state
+    invariant_class: cross-service
+    symptom: >-
+      A customer keeps a feature their current plan does not permit, with no
+      money involved anywhere.
+    mechanism: >-
+      Grants live in one service and the plan in another. The aggregate rule
+      "granted features are a subset of permitted features" has no owner.
+    status: reproduced
+    verified_by:
+      - test_a_downgrade_strands_a_grant_the_new_plan_forbids
+      - test_a_grant_outside_the_plan_is_a_violation
+    schedules: []
+    reproduce: pytest tests/integration/test_entitlement_workflow.py -q
+    monitoring_shows: Nothing. Both services are internally consistent.
+    control: An authority owning the subset relation across both services.
+    control_verified_by:
+      - test_a_grant_within_the_plan_is_clean
+    notes: >-
+      The same structure as ACL-F01 with no arithmetic in it, so the finding
+      cannot be dismissed as an accounting problem.
+
+  - id: ACL-F12
+    name: Aggregate exactness under contention
+    family: concurrency
+    invariant_class: cross-service
+    symptom: >-
+      Under load a budget authority admits approximately the right number of
+      actions instead of exactly the right number.
+    mechanism: >-
+      The check and the grant are not one atomic step, so the authority contains
+      the very read-check-write race it exists to prevent.
+    status: reproduced
+    verified_by:
+      - test_the_ceiling_holds_under_contention
+      - test_refusals_are_refusals_not_errors
+    schedules: []
+    reproduce: pytest tests/integration/test_capacity.py -q
+    monitoring_shows: >-
+      Rising latency, which reads as load rather than as a correctness risk.
+    control: >-
+      Check and grant inside one transaction-scoped lock, keyed per case so
+      contention stays local.
+    control_verified_by:
+      - test_the_ceiling_holds_under_contention
+    notes: >-
+      Measured at 10, 50 and 100 concurrent agents: exactly ten grants and
+      exactly $1,000.00 every time. Losers receive 409, never 500.
+
+  - id: ACL-F13
+    name: A model-driven agent breaches identically
+    family: concurrency
+    invariant_class: cross-service
+    symptom: >-
+      Replacing the deterministic agent with a real LLM changes nothing about the
+      outcome.
+    mechanism: >-
+      The model reads before acting — diligently — and its read and its write are
+      still not atomic across services. Cognition was never the problem.
+    status: reproduced
+    verified_by:
+      - test_arm_c_reproduces_the_violation_with_a_real_model
+      - test_arm_c_agents_read_before_acting
+    schedules: []
+    reproduce: make test-llm
+    monitoring_shows: Nothing. The agent's reasoning is sound and its calls succeed.
+    control: >-
+      The same coordination authority. It holds with cognition in the loop,
+      unchanged.
+    control_verified_by:
+      - test_arm_d_never_breaches_the_ceiling
+      - test_arm_d_refusals_come_from_the_control_not_the_harness
+    notes: >-
+      Five of five runs breached at $1,100 without the authority; five of five
+      stayed clean with it. Requires DEEPSEEK_API_KEY.
+
+  - id: ACL-F14
+    name: A breach invisible to every health signal
+    family: reconciliation
+    invariant_class: eventual
+    symptom: >-
+      Task success, distributed tracing and reconciliation all report healthy
+      while the business state is wrong.
+    mechanism: >-
+      Each signal answers a question correctly, and none of them is asked whether
+      the business state is right. Operational health and business correctness
+      are different measurements.
+    status: reproduced
+    verified_by:
+      - test_ordinary_monitoring_does_not_see_the_s1_breach
+      - test_a_fully_caught_up_breach_produces_no_findings_at_all
+      - test_every_span_in_the_breaching_run_reports_success
+    schedules: [S1, S3]
+    reproduce: make reproduce SCHEDULE=S1
+    monitoring_shows: >-
+      Three green signals agreeing. Their agreement is the finding.
+    control: >-
+      An invariant checker that reads across service boundaries, run separately
+      from operational monitoring.
+    control_verified_by:
+      - test_violation_when_the_sum_exceeds_the_ceiling
+      - test_calibration_passes_with_the_real_oracle
+    notes: >-
+      The reason "add more observability" does not address this class. Measured,
+      not asserted — the reconciler is genuinely clean during the breach.
