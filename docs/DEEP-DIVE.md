@@ -111,6 +111,57 @@ projection that had not applied A's event.
 > This is the pivot. Serialising the agents does not fix it. Anyone who came in
 > thinking "race condition" has to revise here.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agent A
+    participant P as CRM projection
+    participant B as Agent B
+    participant S as Billing + Ledger
+
+    Note over A,S: S1 — strictly sequential. Nothing overlaps.
+    A->>P: read committed compensation
+    P-->>A: $0
+    A->>S: commit refund $600
+    S-->>A: acknowledged
+    Note over A: A is finished before B begins
+    B->>P: read committed compensation
+    P-->>B: $0  ← the event has not been applied yet
+    Note over B: $0 + $500 ≤ $1,000 → permitted
+    B->>S: commit credit $500
+    Note over S: truth is $1,100 against a $1,000 ceiling
+```
+
+The same schedule with a coordination authority, and **the projection left exactly
+as stale**:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant A as Agent A
+    participant P as CRM projection
+    participant B as Agent B
+    participant C as Control (owns the ceiling)
+    participant S as Billing + Ledger
+
+    Note over A,S: S1H — same staleness, one control added
+    A->>P: read
+    P-->>A: $0
+    A->>C: reserve $600
+    C-->>A: granted
+    A->>S: commit refund $600
+    B->>P: read
+    P-->>B: $0  ← still stale, exactly as in S1
+    B->>C: reserve $500
+    C-->>B: refused — $600 held + $500 > $1,000
+    Note over B: B declines. Total $600.
+    Note over C: the authority reads authoritative state, not the projection
+```
+
+**The stale read still happened.** It simply stopped being able to cause harm —
+which is why the fault is in the interface the agent was given, not in the agent.
+
+
 **Isolate the variable.** `S1C` is identical with the projection caught up →
 CLEAN. So it is not the agent, not the ordering, not the amounts. It is whether
 the read model was current.

@@ -1,0 +1,489 @@
+<title>The Diligent Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  :root{
+    --paper:#EDF1F5; --card:#F7F9FB; --ink:#101821; --ink-soft:#41505F;
+    --ink-faint:#6B7A89; --rule:#C6D0DA; --rule-soft:#DCE3EA;
+    --indigo:#3A4E8F; --indigo-soft:#E3E8F5;
+    --breach:#AE3520; --breach-soft:#F6E2DD;
+    --clean:#2E6B50; --clean-soft:#DFEDE6;
+    --amber:#8A6212;
+    --shadow:0 1px 2px rgba(16,24,33,.06),0 8px 24px -12px rgba(16,24,33,.18);
+    --step:clamp(.82rem,.79rem + .15vw,.9rem);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0D131A; --card:#141C25; --ink:#E6EDF3; --ink-soft:#A9B7C4;
+      --ink-faint:#7E8D9B; --rule:#28323D; --rule-soft:#1D2630;
+      --indigo:#8FA4E8; --indigo-soft:#1B2542;
+      --breach:#E2705A; --breach-soft:#37201B;
+      --clean:#6BB893; --clean-soft:#152A22;
+      --amber:#D4A542;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0D131A; --card:#141C25; --ink:#E6EDF3; --ink-soft:#A9B7C4;
+    --ink-faint:#7E8D9B; --rule:#28323D; --rule-soft:#1D2630;
+    --indigo:#8FA4E8; --indigo-soft:#1B2542;
+    --breach:#E2705A; --breach-soft:#37201B;
+    --clean:#6BB893; --clean-soft:#152A22;
+    --amber:#D4A542;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -14px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1120px; margin:0 auto; padding:clamp(1.5rem,4vw,3.5rem) clamp(1rem,3vw,2rem) 4rem}
+
+  /* ---- masthead ---- */
+  .mast{border-bottom:2px solid var(--ink); padding-bottom:1.1rem; margin-bottom:2rem}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-faint); margin:0 0 .6rem
+  }
+  h1{
+    font-family:Spectral,Georgia,serif; font-weight:600;
+    font-size:clamp(2rem,1.4rem + 2.6vw,3.1rem); line-height:1.08;
+    margin:0 0 .7rem; text-wrap:balance; letter-spacing:-.015em;
+  }
+  .standfirst{
+    font-family:Spectral,Georgia,serif; font-size:clamp(1.02rem,.98rem + .3vw,1.2rem);
+    color:var(--ink-soft); margin:0; max-width:62ch;
+  }
+  .standfirst em{color:var(--ink); font-style:italic}
+
+  /* ---- scenario tabs ---- */
+  .scenarios{display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr)); gap:.6rem; margin:2rem 0 1.4rem}
+  .scen{
+    text-align:left; cursor:pointer; background:var(--card); color:var(--ink);
+    border:1px solid var(--rule); border-radius:3px; padding:.75rem .85rem;
+    font:inherit; display:flex; flex-direction:column; gap:.25rem;
+    transition:border-color .15s, background .15s, box-shadow .15s;
+  }
+  .scen:hover{border-color:var(--indigo)}
+  .scen:focus-visible{outline:2px solid var(--indigo); outline-offset:2px}
+  .scen[aria-pressed="true"]{border-color:var(--ink); box-shadow:var(--shadow); background:var(--paper)}
+  .scen[aria-pressed="true"] .scen-id{background:var(--ink); color:var(--paper)}
+  .scen-top{display:flex; align-items:center; gap:.5rem}
+  .scen-id{
+    font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:600;
+    letter-spacing:.06em; padding:.12rem .4rem; border-radius:2px;
+    background:var(--rule-soft); color:var(--ink-soft);
+  }
+  .scen-name{font-weight:600; font-size:.9rem}
+  .scen-note{font-size:.78rem; color:var(--ink-faint); line-height:1.45}
+
+  /* ---- instrument ---- */
+  .instrument{
+    background:var(--card); border:1px solid var(--rule); border-radius:4px;
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .ruler{
+    display:flex; gap:0; border-bottom:1px solid var(--rule);
+    background:var(--paper); overflow-x:auto;
+  }
+  .tick{
+    flex:1 1 0; min-width:104px; border:0; border-right:1px solid var(--rule-soft);
+    background:transparent; cursor:pointer; padding:.6rem .5rem .55rem;
+    font:inherit; text-align:left; color:var(--ink-faint);
+    transition:background .15s,color .15s; position:relative;
+  }
+  .tick:last-child{border-right:0}
+  .tick:hover{background:var(--rule-soft)}
+  .tick:focus-visible{outline:2px solid var(--indigo); outline-offset:-2px}
+  .tick[data-state="done"]{color:var(--ink-soft)}
+  .tick[data-state="now"]{background:var(--indigo-soft); color:var(--ink)}
+  .tick[data-state="now"]::after{
+    content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--indigo);
+  }
+  .tick-n{font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.08em; display:block}
+  .tick-who{font-size:.76rem; font-weight:500; display:block; margin-top:.1rem}
+
+  .stage{display:grid; grid-template-columns:1fr 1fr .95fr; gap:0}
+  @media (max-width:860px){ .stage{grid-template-columns:1fr} }
+
+  .lane{padding:1.1rem 1.15rem; border-right:1px solid var(--rule-soft); min-width:0}
+  .lane:last-child{border-right:0}
+  @media (max-width:860px){ .lane{border-right:0; border-bottom:1px solid var(--rule-soft)} }
+  .lane-hd{
+    display:flex; align-items:baseline; justify-content:space-between; gap:.5rem;
+    margin-bottom:.85rem; padding-bottom:.5rem; border-bottom:1px solid var(--rule-soft);
+  }
+  .lane-name{font-family:"IBM Plex Mono",monospace; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint)}
+  .lane-task{font-size:.78rem; color:var(--ink-soft); font-variant-numeric:tabular-nums}
+
+  .readout{margin-bottom:.9rem}
+  .readout-label{
+    font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:.15rem;
+  }
+  .readout-val{
+    font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+    font-size:1.6rem; font-weight:500; letter-spacing:-.02em; line-height:1.15;
+    transition:color .2s;
+  }
+  .readout-val.dim{color:var(--ink-faint)}
+
+  .state{
+    display:inline-flex; align-items:center; gap:.35rem; font-size:.76rem; font-weight:500;
+    padding:.2rem .5rem; border-radius:2px; border:1px solid transparent;
+    font-family:"IBM Plex Mono",monospace; letter-spacing:.04em;
+  }
+  .state[data-k="idle"]{background:var(--rule-soft); color:var(--ink-faint)}
+  .state[data-k="ok"]{background:var(--indigo-soft); color:var(--indigo); border-color:var(--indigo)}
+  .state[data-k="acted"]{background:var(--breach-soft); color:var(--breach); border-color:var(--breach)}
+  .state[data-k="held"]{background:var(--clean-soft); color:var(--clean); border-color:var(--clean)}
+  .state[data-k="stop"]{background:var(--clean-soft); color:var(--clean); border-color:var(--clean)}
+
+  .note{font-size:.8rem; color:var(--ink-soft); line-height:1.5; margin:.7rem 0 0; min-height:3.6em}
+  .note strong{color:var(--ink)}
+
+  /* truth panel */
+  .truth{background:var(--paper)}
+  .bar{
+    position:relative; height:34px; border:1px solid var(--rule); border-radius:2px;
+    background:var(--card); overflow:hidden; margin:.2rem 0 .5rem;
+  }
+  .fill{
+    position:absolute; inset:0 auto 0 0; width:0;
+    background:var(--indigo); opacity:.85;
+    transition:width .45s cubic-bezier(.4,0,.2,1), background .3s;
+  }
+  .fill.over{background:var(--breach)}
+  .ceil{position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--ink); left:100%}
+  .ceil-label{
+    font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--ink-faint);
+    display:flex; justify-content:space-between; font-variant-numeric:tabular-nums;
+  }
+  .verdict{
+    font-family:"IBM Plex Mono",monospace; font-weight:600; letter-spacing:.1em;
+    font-size:.82rem; padding:.4rem .6rem; border-radius:2px; text-align:center;
+    margin-top:.9rem; border:1px solid;
+  }
+  .verdict[data-v="pending"]{background:var(--rule-soft); color:var(--ink-faint); border-color:var(--rule)}
+  .verdict[data-v="clean"]{background:var(--clean-soft); color:var(--clean); border-color:var(--clean)}
+  .verdict[data-v="violation"]{background:var(--breach-soft); color:var(--breach); border-color:var(--breach)}
+
+  /* controls */
+  .controls{
+    display:flex; align-items:center; gap:.55rem; padding:.8rem 1.15rem;
+    border-top:1px solid var(--rule); background:var(--paper); flex-wrap:wrap;
+  }
+  .btn{
+    font:inherit; font-size:.84rem; font-weight:500; cursor:pointer;
+    background:var(--card); color:var(--ink); border:1px solid var(--rule);
+    border-radius:3px; padding:.4rem .85rem; transition:background .15s,border-color .15s;
+  }
+  .btn:hover:not(:disabled){border-color:var(--ink)}
+  .btn:focus-visible{outline:2px solid var(--indigo); outline-offset:2px}
+  .btn:disabled{opacity:.4; cursor:not-allowed}
+  .btn.primary{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+  .btn.primary:hover:not(:disabled){opacity:.88}
+  .hint{font-size:.74rem; color:var(--ink-faint); margin-left:auto; font-family:"IBM Plex Mono",monospace}
+
+  /* signals */
+  .signals{margin-top:1.5rem; border:1px solid var(--rule); border-radius:4px; background:var(--card); overflow:hidden}
+  .signals-hd{padding:.85rem 1.15rem; border-bottom:1px solid var(--rule-soft); background:var(--paper)}
+  .signals-hd h2{
+    font-family:Spectral,Georgia,serif; font-size:1.05rem; font-weight:600; margin:0 0 .15rem;
+  }
+  .signals-hd p{margin:0; font-size:.82rem; color:var(--ink-soft)}
+  .sig-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+  .sig{padding:.9rem 1.15rem; border-right:1px solid var(--rule-soft)}
+  .sig:last-child{border-right:0}
+  .sig-name{
+    font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:.3rem;
+  }
+  .sig-val{font-weight:600; font-size:.95rem; display:flex; align-items:center; gap:.35rem}
+  .dot{width:8px; height:8px; border-radius:50%; flex:none}
+  .dot.g{background:var(--clean)} .dot.r{background:var(--breach)}
+  .sig-sub{font-size:.74rem; color:var(--ink-faint); margin-top:.15rem}
+  .sig.money{background:var(--paper)}
+
+  /* evidence strip */
+  .evidence{margin-top:2.5rem}
+  .evidence h2{
+    font-family:Spectral,Georgia,serif; font-size:1.15rem; font-weight:600;
+    margin:0 0 .2rem; padding-bottom:.5rem; border-bottom:1px solid var(--rule);
+  }
+  .ev-note{font-size:.82rem; color:var(--ink-faint); margin:.5rem 0 1.1rem}
+  .ev-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:1px; background:var(--rule-soft); border:1px solid var(--rule-soft)}
+  .ev{background:var(--card); padding:.9rem 1rem}
+  .ev-k{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); display:block}
+  .ev-v{font-family:"IBM Plex Mono",monospace; font-size:1.25rem; font-weight:600; font-variant-numeric:tabular-nums; margin:.2rem 0 .1rem; letter-spacing:-.01em}
+  .ev-d{font-size:.76rem; color:var(--ink-soft); line-height:1.45}
+
+  .curve{display:flex; align-items:flex-end; gap:3px; height:38px; margin:.35rem 0 .3rem}
+  .cbar{flex:1; background:var(--breach); opacity:.85; border-radius:1px 1px 0 0; min-height:2px}
+  .cbar.zero{background:var(--rule)}
+  .curve-x{display:flex; justify-content:space-between; font-family:"IBM Plex Mono",monospace; font-size:.6rem; color:var(--ink-faint)}
+
+  footer{
+    margin-top:3rem; padding-top:1.1rem; border-top:1px solid var(--rule);
+    font-size:.8rem; color:var(--ink-faint); display:flex; gap:1rem; flex-wrap:wrap; justify-content:space-between;
+  }
+  footer a{color:var(--indigo); text-decoration:none; border-bottom:1px solid transparent}
+  footer a:hover{border-bottom-color:var(--indigo)}
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">Agent Control Lab · reproducible harness</p>
+    <h1>The Diligent Agent</h1>
+    <p class="standfirst">Two agents. Each reads every system it can see. Each correctly concludes its action fits under the $1,000 ceiling. Both are right. The total is <em>$1,100</em>.</p>
+  </header>
+
+  <div class="scenarios" role="group" aria-label="Scenario"></div>
+
+  <div class="instrument">
+    <div class="ruler" role="tablist" aria-label="Steps"></div>
+    <div class="stage">
+      <div class="lane" id="laneA"></div>
+      <div class="lane" id="laneB"></div>
+      <div class="lane truth" id="laneT"></div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="back">← Back</button>
+      <button class="btn primary" id="next">Step →</button>
+      <button class="btn" id="reset">Reset</button>
+      <span class="hint">← → to step</span>
+    </div>
+  </div>
+
+  <section class="signals">
+    <div class="signals-hd">
+      <h2>What the monitoring said</h2>
+      <p id="sigNote"></p>
+    </div>
+    <div class="sig-grid" id="sigGrid"></div>
+  </section>
+
+  <section class="evidence">
+    <h2>Measured, not asserted</h2>
+    <p class="ev-note">Every figure below is produced by a test that asserts it before writing it down.</p>
+    <div class="ev-grid">
+      <div class="ev">
+        <span class="ev-k">Exposure vs arrival gap</span>
+        <div class="curve" aria-hidden="true">
+          <div class="cbar" style="height:100%"></div>
+          <div class="cbar" style="height:100%"></div>
+          <div class="cbar" style="height:100%"></div>
+          <div class="cbar" style="height:20%"></div>
+          <div class="cbar zero" style="height:2px"></div>
+          <div class="cbar zero" style="height:2px"></div>
+          <div class="cbar zero" style="height:2px"></div>
+        </div>
+        <div class="curve-x"><span>0ms</span><span>100</span><span>200</span></div>
+        <p class="ev-d">100% of runs breach up to a 75&nbsp;ms gap; 20% at 100&nbsp;ms; none beyond 125&nbsp;ms. The cliff is the agent's own read-check-write duration.</p>
+      </div>
+      <div class="ev">
+        <span class="ev-k">With a real model</span>
+        <div class="ev-v">5/5 &nbsp;·&nbsp; 5/5</div>
+        <p class="ev-d">Arm C breached 5 of 5 runs at $1,100 — reading before acting every time. Arm D, same model plus the authority, stayed clean 5 of 5.</p>
+      </div>
+      <div class="ev">
+        <span class="ev-k">Under contention</span>
+        <div class="ev-v">10 · $1,000.00</div>
+        <p class="ev-d">At 10, 50 and 100 concurrent agents the authority grants exactly ten and exactly one thousand dollars. Not approximately.</p>
+      </div>
+      <div class="ev">
+        <span class="ev-k">Scenarios</span>
+        <div class="ev-v">3 of 11</div>
+        <p class="ev-d">Three end with the business state wrong. Two of those three are invisible to every signal the system emits.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Deterministic replay · oracle calibrated before every run · negative controls must pass</span>
+    <a href="https://github.com/Hashem-Al-Qurashi/agent-control-lab">github.com/Hashem-Al-Qurashi/agent-control-lab</a>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const CEIL = 1000;
+
+  // Step shape: who, label, observedA, observedB, truth, stateA, stateB, note
+  const S = {
+    P2:{
+      id:"P2", name:"Concurrent race", note:"No coordination authority. The interleaving everyone expects.",
+      verdict:"violation",
+      steps:[
+        {who:"—", label:"start", oa:null, ob:null, t:0, sa:["idle","waiting"], sb:["idle","waiting"],
+         note:"Ceiling is $1,000 for this case, covering refunds and credits together. Agent A wants to refund $600. Agent B wants to credit $500."},
+        {who:"Agent A", label:"reads", oa:0, ob:null, t:0, sa:["ok","observed $0"], sb:["idle","waiting"],
+         note:"A reads Billing and the Ledger. Nothing committed yet, so it observes <strong>$0</strong>."},
+        {who:"Agent B", label:"reads", oa:0, ob:0, t:0, sa:["ok","observed $0"], sb:["ok","observed $0"],
+         note:"B reads the same two systems, before A has written anything. It also observes <strong>$0</strong>. Both observations are correct at the moment they were taken."},
+        {who:"Agent A", label:"decides", oa:0, ob:0, t:0, sa:["ok","0 + 600 ≤ 1000"], sb:["ok","observed $0"],
+         note:"A checks its action against what it observed: $0 + $600 is within $1,000. <strong>Permitted.</strong>"},
+        {who:"Agent A", label:"commits", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","observed $0"],
+         note:"A commits. Truth is now $600. <strong>B's observation is stale from this instant</strong> — and nothing tells B that."},
+        {who:"Agent B", label:"decides", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","0 + 500 ≤ 1000"],
+         note:"B checks against <strong>its own observation of $0</strong>: $0 + $500 is within $1,000. Permitted. B is not careless — it is reasoning correctly from what it was given."},
+        {who:"Agent B", label:"commits", oa:0, ob:0, t:1100, sa:["acted","refund $600"], sb:["acted","credit $500"],
+         note:"B commits. The total is <strong>$1,100 against a $1,000 ceiling</strong>. Every action was authorized. No component failed. No service could see the sum."}
+      ]},
+    S1:{
+      id:"S1", name:"Stale view, no overlap", note:"Strictly sequential. B starts only after A is fully acknowledged.",
+      verdict:"violation",
+      steps:[
+        {who:"—", label:"start", oa:null, ob:null, t:0, sa:["idle","waiting"], sb:["idle","waiting"],
+         note:"Same ceiling, same amounts — but here the agents read a CRM projection, the way an agent in a real system reads a reporting view it does not own."},
+        {who:"Agent A", label:"reads", oa:0, ob:null, t:0, sa:["ok","observed $0"], sb:["idle","waiting"],
+         note:"A reads the projection: <strong>$0</strong>."},
+        {who:"Agent A", label:"commits", oa:0, ob:null, t:600, sa:["acted","refund $600"], sb:["idle","waiting"],
+         note:"A commits $600 and is acknowledged. Its work is finished. The projection has not applied the event yet."},
+        {who:"Agent B", label:"reads", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","observed $0"],
+         note:"B begins <strong>strictly after A finished</strong>. Nothing overlaps. It reads the projection — which still says <strong>$0</strong>."},
+        {who:"Agent B", label:"decides", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","0 + 500 ≤ 1000"],
+         note:"$0 + $500 is within $1,000. Permitted. <strong>Serialising the agents did not help.</strong>"},
+        {who:"Agent B", label:"commits", oa:0, ob:0, t:1100, sa:["acted","refund $600"], sb:["acted","credit $500"],
+         note:"$1,100 again — with no concurrency at all. This is the one that ends the “just stop them overlapping” conversation."}
+      ]},
+    P0:{
+      id:"P0", name:"Race + authority", note:"P2's exact interleaving, with a reservation the agents must obtain.",
+      verdict:"clean",
+      steps:[
+        {who:"—", label:"start", oa:null, ob:null, t:0, sa:["idle","waiting"], sb:["idle","waiting"],
+         note:"Identical to P2 in every respect but one: a service now owns the ceiling and must be consulted before acting."},
+        {who:"Agent A", label:"reads", oa:0, ob:null, t:0, sa:["ok","observed $0"], sb:["idle","waiting"],
+         note:"A observes <strong>$0</strong> — exactly as in P2."},
+        {who:"Agent B", label:"reads", oa:0, ob:0, t:0, sa:["ok","observed $0"], sb:["ok","observed $0"],
+         note:"B observes <strong>$0</strong> — also exactly as in P2. The stale view has not been fixed."},
+        {who:"Agent A", label:"reserves", oa:0, ob:0, t:0, sa:["held","holds $600"], sb:["ok","observed $0"],
+         note:"A asks the authority for $600 against the ceiling. <strong>Granted</strong>, and the budget is now held."},
+        {who:"Agent A", label:"commits", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","observed $0"],
+         note:"A commits $600. B's observation is stale in precisely the way it was in P2."},
+        {who:"Agent B", label:"reserves", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["stop","refused"],
+         note:"B asks for $500. The authority can see <strong>every input to the invariant</strong> — $600 held plus $500 exceeds $1,000. <strong>Refused.</strong>"},
+        {who:"Agent B", label:"declines", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["stop","declined"],
+         note:"B declines. Total $600. The agent never became smarter and its view was never fresher — <strong>only the interface it was given changed.</strong>"}
+      ]},
+    S1H:{
+      id:"S1H", name:"Stale view + authority", note:"S1's exact staleness, with the authority added.",
+      verdict:"clean",
+      steps:[
+        {who:"—", label:"start", oa:null, ob:null, t:0, sa:["idle","waiting"], sb:["idle","waiting"],
+         note:"The same lagging projection as S1. A test asserts B's view here is <em>exactly</em> as stale as it was in S1."},
+        {who:"Agent A", label:"reads", oa:0, ob:null, t:0, sa:["ok","observed $0"], sb:["idle","waiting"],
+         note:"A reads the projection: <strong>$0</strong>."},
+        {who:"Agent A", label:"reserves", oa:0, ob:null, t:0, sa:["held","holds $600"], sb:["idle","waiting"],
+         note:"A reserves $600 against the ceiling. Granted."},
+        {who:"Agent A", label:"commits", oa:0, ob:null, t:600, sa:["acted","refund $600"], sb:["idle","waiting"],
+         note:"A commits and finishes. The projection still has not caught up."},
+        {who:"Agent B", label:"reads", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["ok","observed $0"],
+         note:"B reads the projection and observes <strong>$0</strong> — the same wrong number that defeated it in S1."},
+        {who:"Agent B", label:"reserves", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["stop","refused"],
+         note:"B asks the authority for $500. Refused: the authority reads authoritative state, not the projection."},
+        {who:"Agent B", label:"declines", oa:0, ob:0, t:600, sa:["acted","refund $600"], sb:["stop","declined"],
+         note:"Total $600. <strong>The stale read still happened.</strong> It just stopped being able to cause harm."}
+      ]}
+  };
+
+  const order = ["P2","S1","P0","S1H"];
+  let key = "P2", i = 0;
+
+  const $ = s => document.querySelector(s);
+  const scenBox = $(".scenarios"), ruler = $(".ruler");
+  const laneA = $("#laneA"), laneB = $("#laneB"), laneT = $("#laneT");
+  const sigGrid = $("#sigGrid"), sigNote = $("#sigNote");
+  const bNext = $("#next"), bBack = $("#back"), bReset = $("#reset");
+
+  const money = n => "$" + n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  order.forEach(k=>{
+    const s = S[k];
+    const b = document.createElement("button");
+    b.className="scen"; b.type="button"; b.dataset.k=k;
+    b.innerHTML = `<span class="scen-top"><span class="scen-id">${s.id}</span><span class="scen-name">${s.name}</span></span><span class="scen-note">${s.note}</span>`;
+    b.addEventListener("click",()=>{ key=k; i=0; render(); });
+    scenBox.appendChild(b);
+  });
+
+  function lane(el,name,task,label,obs,state,isTruth){
+    el.innerHTML =
+      `<div class="lane-hd"><span class="lane-name">${name}</span><span class="lane-task">${task}</span></div>`+
+      `<div class="readout"><span class="readout-label">${label}</span>`+
+      `<div class="readout-val${obs===null?" dim":""}">${obs===null?"—":money(obs)}</div></div>`+
+      `<span class="state" data-k="${state[0]}">${state[1]}</span>`;
+  }
+
+  function render(){
+    const s = S[key], st = s.steps[i], last = i===s.steps.length-1;
+
+    document.querySelectorAll(".scen").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.k===key)));
+
+    ruler.innerHTML="";
+    s.steps.forEach((step,n)=>{
+      const t=document.createElement("button");
+      t.className="tick"; t.type="button";
+      t.dataset.state = n<i?"done":(n===i?"now":"todo");
+      t.innerHTML=`<span class="tick-n">${String(n).padStart(2,"0")}</span><span class="tick-who">${step.who==="—"?"setup":step.who+" "+step.label}</span>`;
+      t.addEventListener("click",()=>{ i=n; render(); });
+      ruler.appendChild(t);
+    });
+
+    lane(laneA,"Agent A","refund $600.00","what A has observed",st.oa,st.sa);
+    lane(laneB,"Agent B","credit $500.00","what B has observed",st.ob,st.sb);
+
+    const over = st.t > CEIL;
+    const pct = Math.min(100, st.t/CEIL*100);
+    const v = last ? s.verdict : "pending";
+    laneT.innerHTML =
+      `<div class="lane-hd"><span class="lane-name">Actual committed</span><span class="lane-task">ceiling ${money(CEIL)}</span></div>`+
+      `<div class="readout"><span class="readout-label">truth, across both services</span>`+
+      `<div class="readout-val" style="color:${over?"var(--breach)":"var(--ink)"}">${money(st.t)}</div></div>`+
+      `<div class="bar"><div class="fill${over?" over":""}" style="width:${pct}%"></div><div class="ceil"></div></div>`+
+      `<div class="ceil-label"><span>0</span><span>${money(CEIL)}</span></div>`+
+      `<div class="verdict" data-v="${v}">${v==="pending"?"evaluating…":(v==="clean"?"CLEAN":"VIOLATION · over by "+money(st.t-CEIL))}</div>`;
+
+    // note goes under the lanes via A's lane for reading flow
+    const note=document.createElement("p"); note.className="note"; note.innerHTML=st.note;
+    laneA.appendChild(note);
+
+    bBack.disabled = i===0; bNext.disabled = last;
+
+    // signals — identical regardless of verdict; that is the point
+    const breached = s.verdict==="violation" && last;
+    sigNote.textContent = last
+      ? (breached
+        ? "Every health signal is green. The money is wrong. These three panels look the same in P0 and S1H, where the money is right."
+        : "Every health signal is green — exactly as it was in the runs that ended $100 over. The signals cannot tell these runs apart.")
+      : "Evaluated once both agents are finished.";
+    sigGrid.innerHTML = [
+      ["Task success","both agents succeeded","g","Neither agent errored or retried."],
+      ["Distributed trace","all spans OK","g","One trace, agent → services, no error, no anomalous latency."],
+      ["Reconciliation","no findings","g","No lag, no drift, no duplicate keys, no orphans."],
+      ["Business state", last?(breached?"$1,100.00 — wrong":"$600.00 — correct"):"pending", last&&breached?"r":"g",
+        last&&breached?"Nothing above reports this.":"Within the authorised ceiling."]
+    ].map(([k,v,d,sub],idx)=>
+      `<div class="sig${idx===3?" money":""}"><span class="sig-name">${k}</span>`+
+      `<div class="sig-val"><span class="dot ${d}"></span>${v}</div><div class="sig-sub">${sub}</div></div>`
+    ).join("");
+  }
+
+  bNext.addEventListener("click",()=>{ if(i<S[key].steps.length-1){i++;render();} });
+  bBack.addEventListener("click",()=>{ if(i>0){i--;render();} });
+  bReset.addEventListener("click",()=>{ i=0; render(); });
+  document.addEventListener("keydown",e=>{
+    if(e.key==="ArrowRight"){ if(i<S[key].steps.length-1){i++;render();} }
+    if(e.key==="ArrowLeft"){ if(i>0){i--;render();} }
+  });
+
+  render();
+})();
+</script>
