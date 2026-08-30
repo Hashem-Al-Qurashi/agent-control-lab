@@ -133,3 +133,31 @@ def test_source_is_marked_applied_only_after_the_projection_commits(clean_crm):
     with connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM applied_events")
         assert cur.fetchone()[0] == 1
+
+
+def test_the_project_endpoint_scopes_its_reads_to_one_case():
+    """The /project endpoint must not drain other cases' events.
+
+    Found while investigating ADR-015. Two call sites build HttpEventSource:
+    the projector actor in agents/diligent/pool.py passes case_id, and this
+    endpoint did not. An unscoped source returns unapplied events for EVERY
+    case and marks them applied, which is the cross-case leakage a previous fix
+    already removed from one path and left in the other.
+
+    Not on ADR-015's failure path -- schedules dispatch the pool projector, and
+    nothing currently posts to this endpoint. Latent, and it would surface the
+    moment anyone used it.
+    """
+    import inspect
+
+    from apps.crm.main import ProjectRequest, project
+
+    assert "case_id" in ProjectRequest.model_fields, (
+        "/project cannot scope its reads without a case_id"
+    )
+
+    source = inspect.getsource(project)
+    assert "req.case_id" in source, (
+        "/project builds event sources without passing case_id; it will drain "
+        "every case's unapplied events"
+    )

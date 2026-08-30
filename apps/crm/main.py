@@ -100,6 +100,12 @@ def get_compensation(case_id: str = Query(...)) -> dict:
 class ProjectRequest(BaseModel):
     billing_url: str
     ledger_url: str
+    # Required, not optional. An unscoped event source returns unapplied events
+    # for EVERY case and marks them applied -- draining another case's events
+    # and leaving its projector nothing to apply. That leakage was removed from
+    # the pool projector's path and left here, where it stayed latent because
+    # nothing calls this endpoint yet.
+    case_id: str
 
 
 @app.post("/project")
@@ -113,8 +119,8 @@ def project(req: ProjectRequest) -> dict:
     actor = current_actor() or "projector"
     schedule = os.environ.get("ACL_SCHEDULE_ID", "unscheduled")
     sources = {
-        "billing": HttpEventSource(req.billing_url, actor, schedule),
-        "ledger": HttpEventSource(req.ledger_url, actor, schedule),
+        "billing": HttpEventSource(req.billing_url, actor, schedule, req.case_id),
+        "ledger": HttpEventSource(req.ledger_url, actor, schedule, req.case_id),
     }
     applied = apply_pending(sources, checkpoint=_checkpoint)
     return {"applied": applied}

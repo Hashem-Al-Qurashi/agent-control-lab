@@ -217,3 +217,43 @@ Open, and materially narrower than at any previous point. Not a mystery about
 where a record went: the checkpoint was never emitted, and the question is why
 its precondition was unmet. That is a smaller and better-posed problem than this
 ADR has had since it was written.
+
+
+---
+
+## Update — 2026-08-30 (sixth): candidate ruled out, latent leak found instead
+
+Investigated the remaining question — why `unapplied()` is empty at poll time in
+multi-schedule runs. The "consumed by a previous schedule's projector" candidate
+is **ruled out for the schedules**, and the investigation found a real defect
+somewhere else.
+
+`HttpEventSource` takes an optional `case_id`. Unscoped, it returns unapplied
+events for **every** case and marks them applied. Two call sites build it:
+
+| Call site | Scoped |
+|---|---|
+| `agents/diligent/pool.py` — the projector actor schedules dispatch | yes |
+| `apps/crm/main.py` — the `/project` endpoint | **no** |
+
+Schedules use the pool path, and nothing posts to `/project`, so this is **not**
+on the failure path. But it is the same cross-case leakage a previous fix removed
+from one path and left in the other — latent, and it would surface the moment
+anyone used that endpoint, draining another case's events and leaving its
+projector nothing to apply. Which is precisely this ADR's symptom, arriving by a
+different route.
+
+`case_id` is now **required** on `ProjectRequest`, not optional, so the unscoped
+construction is no longer expressible. Mutation-verified.
+
+### ADR-015 itself
+
+Unchanged and still open. Two of three candidates now have evidence against them
+— cross-schedule `release_order` leakage (`reset_state()` clears the barrier) and
+projector cross-case consumption (the schedule path is scoped). The remaining
+candidate is visibility: the event not yet readable by the projector's
+transaction when it polls.
+
+Nothing about the ADR's own failure was fixed. What the investigation produced
+was a latent defect of the same shape, found because the question was asked
+precisely enough to go looking.
