@@ -426,6 +426,8 @@ make test-llm
 
 **Control verified by:** `test_arm_d_never_breaches_the_ceiling`, `test_arm_d_refusals_come_from_the_control_not_the_harness`
 
+**Requires.** DEEPSEEK_API_KEY set and ACL_RUN_LLM=1 — a default run skips this entry's gated assertions.
+
 **Note.** Five of five runs breached at $1,100 without the authority; five of five stayed clean with it. Requires DEEPSEEK_API_KEY.
 
 ---
@@ -455,6 +457,8 @@ make reproduce SCHEDULE=S1
 **Control verified by:** `test_violation_when_the_sum_exceeds_the_ceiling`, `test_calibration_passes_with_the_real_oracle`
 
 **Schedules:** `S1`, `S3`
+
+**Requires.** OTEL_EXPORTER_OTLP_ENDPOINT set with `make observability` running — a default run skips this entry's gated assertions.
 
 **Note.** The reason "add more observability" does not address this class. Measured, not asserted — the reconciler is genuinely clean during the breach.
 

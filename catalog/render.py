@@ -110,6 +110,11 @@ def _entry(e: dict) -> str:
         )
     if e.get("schedules"):
         lines.append("**Schedules:** " + ", ".join(f"`{s}`" for s in e["schedules"]) + "\n")
+    if e.get("requires"):
+        lines.append(
+            f"**Requires.** {e['requires'].strip()} — a default run skips this "
+            "entry's gated assertions.\n"
+        )
     if e.get("notes"):
         lines.append(f"**Note.** {e['notes'].strip()}\n")
     return "\n".join(lines)

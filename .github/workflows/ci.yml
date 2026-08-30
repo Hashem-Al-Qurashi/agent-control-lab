@@ -113,7 +113,23 @@ jobs:
 
       # Last: the only stage needing every service alive at once.
       - name: Schedules
-        run: python -m pytest tests/schedules -q
+        run: python -m pytest tests/schedules -q --junitxml=/tmp/schedules.xml
+
+      # Name-existence is not demonstration. A cited test can be skipped or
+      # failing while the catalogue still claims the entry is reproduced, so
+      # outcomes from the real run are checked -- not just that the name exists.
+      - name: Catalogue claims match the run
+        run: |
+          python -m pytest tests/unit tests/integration -q --junitxml=/tmp/rest.xml || true
+          python - <<'PY'
+          import xml.etree.ElementTree as ET, pathlib
+          root = ET.Element("testsuites")
+          for f in ("/tmp/schedules.xml", "/tmp/rest.xml"):
+              if pathlib.Path(f).exists():
+                  root.append(ET.parse(f).getroot())
+          ET.ElementTree(root).write("/tmp/merged.xml")
+          PY
+          python catalog/verify.py /tmp/merged.xml
 
       # The anomaly that invalidates the method. Run explicitly rather than
       # buried in the suite so a failure is unmissable in the job list.

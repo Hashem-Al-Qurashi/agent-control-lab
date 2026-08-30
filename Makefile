@@ -7,7 +7,7 @@
 PY := python3
 COMPOSE := docker compose
 
-.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf catalog demo test-llm observability observability-down clean
+.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf catalog verify-catalog demo test-llm observability observability-down clean
 
 help:
 	@echo "up          bring up the three databases"
@@ -92,6 +92,13 @@ demo:
 
 catalog:
 	$(PY) catalog/render.py
+
+# Name-existence is not demonstration: a cited test can be skipped, xfailed or
+# failing and the catalogue would still claim the entry is reproduced. This
+# checks outcomes from a real run.
+verify-catalog:
+	$(PY) -m pytest tests/ -q --junitxml=/tmp/acl-report.xml
+	$(PY) catalog/verify.py /tmp/acl-report.xml
 
 test-llm:
 	ACL_RUN_LLM=1 $(PY) -m pytest tests/schedules/test_llm_arms.py -q

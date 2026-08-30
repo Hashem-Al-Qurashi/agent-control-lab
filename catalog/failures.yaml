@@ -336,6 +336,10 @@ failures:
       - test_arm_c_agents_read_before_acting
     schedules: []
     reproduce: make test-llm
+    # Declared, because the default `pytest` run SKIPS these. An entry that
+    # skips silently while claiming reproduction is the overclaim this
+    # catalogue exists to prevent.
+    requires: DEEPSEEK_API_KEY set and ACL_RUN_LLM=1
     monitoring_shows: Nothing. The agent's reasoning is sound and its calls succeed.
     control: >-
       The same coordination authority. It holds with cognition in the loop,
@@ -365,6 +369,9 @@ failures:
       - test_every_span_in_the_breaching_run_reports_success
     schedules: [S1, S3]
     reproduce: make reproduce SCHEDULE=S1
+    # The trace assertion needs a live collector; the rest of the entry runs
+    # unconditionally.
+    requires: OTEL_EXPORTER_OTLP_ENDPOINT set with `make observability` running
     monitoring_shows: >-
       Three green signals agreeing. Their agreement is the finding.
     control: >-
