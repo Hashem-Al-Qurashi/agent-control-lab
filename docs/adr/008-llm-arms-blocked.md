@@ -67,3 +67,26 @@ of schedules rather than all eleven.
 Estimated as the smallest remaining piece of real work in the plan — the harness,
 the schedules, the oracle and the controls all already exist and are
 model-agnostic by construction.
+
+---
+
+## Amendment — 2026-08-30: unblocked and built
+
+This ADR recorded arms C and D as blocked on credentials. The blockage was real
+and lasted until someone checked what was actually available: a
+`DEEPSEEK_API_KEY` was already present in the environment, and DeepSeek's
+OpenAI-compatible endpoint supports tool calling. The cost of the experiment was
+a few cents.
+
+Worth naming as a lesson rather than a footnote: **"blocked on credentials" went
+unexamined for the whole build.** Nobody, including me, checked whether a key was
+already there. A deferral recorded once tends to stay recorded.
+
+Both arms are built and measured — `docs/LLM-ARMS.md`. Arm C reproduces the
+violation 5/5 at $1,100 with a model that reads before acting. Arm D holds 5/5,
+with the refusals coming from the control service.
+
+**The position on evidence strength is unchanged.** The deterministic arm remains
+the stronger support for the structural claim, because no failure there can be
+blamed on a model. What arm D adds is a claim about the *fix* rather than the
+failure: it holds with cognition in the loop, unchanged.

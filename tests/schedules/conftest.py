@@ -187,6 +187,43 @@ def clean_state(stack):
 
 
 @pytest.fixture(scope="module")
+def llm_stack():
+    """Billing, ledger and the control service, barrier disabled.
+
+    Separate from natural_stack because arms C and D need the coordination
+    authority, and module-scoped for the reason ADR-007 records: a session-scoped
+    stack stays alive on the same databases through every schedule that follows.
+    """
+    _assert_no_orphaned_services()
+    billing_migrations()
+    ledger_migrations()
+    control_migrations()
+    grant_readonly()
+
+    env = {"BARRIER_ENABLED": "0", "ACL_ENFORCE_POLICY": "0"}
+    billing_port, ledger_port, control_port = _free_port(), _free_port(), _free_port()
+    procs = [
+        _spawn("apps.billing.main:app", billing_port, env, workers=4),
+        _spawn("apps.ledger.main:app", ledger_port, env, workers=4),
+        _spawn("apps.control.main:app", control_port, env, workers=4),
+    ]
+    probe = {"X-Actor-Id": "PROBE", "X-Schedule-Id": "PROBE"}
+    try:
+        for port in (billing_port, ledger_port, control_port):
+            _wait_for(f"http://127.0.0.1:{port}/health", probe)
+    except RuntimeError:  # pragma: no cover
+        _stop(procs)
+        raise
+
+    yield {
+        "billing": f"http://127.0.0.1:{billing_port}",
+        "ledger": f"http://127.0.0.1:{ledger_port}",
+        "control": f"http://127.0.0.1:{control_port}",
+    }
+    _stop(procs)
+
+
+@pytest.fixture(scope="module")
 def natural_stack():
     """Mode B stack: services with the barrier disabled.
 

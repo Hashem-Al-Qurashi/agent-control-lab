@@ -7,7 +7,7 @@
 PY := python3
 COMPOSE := docker compose
 
-.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf observability observability-down clean
+.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf test-llm observability observability-down clean
 
 help:
 	@echo "up          bring up the three databases"
@@ -22,6 +22,7 @@ help:
 	@echo "manifest    print the run manifest (isolation levels, topology)"
 	@echo "assessment-pdf  rebuild the client-facing assessment PDF"
 	@echo "observability   start Tempo + Grafana (http://127.0.0.1:3001)"
+	@echo "test-llm        run the live model arms (needs DEEPSEEK_API_KEY)"
 
 up:
 	# --wait blocks until every healthcheck passes. Without it `make up`
@@ -75,6 +76,9 @@ calibrate: migrate
 manifest: migrate
 	$(PY) -c "import json; from oracle.manifest import build_manifest; \
 	print(json.dumps(build_manifest(), indent=2))"
+
+test-llm:
+	ACL_RUN_LLM=1 $(PY) -m pytest tests/schedules/test_llm_arms.py -q
 
 observability:
 	$(COMPOSE) --profile observability up -d --wait
