@@ -36,6 +36,9 @@ LEDGER_DSN = os.environ.get(
 CRM_DSN = os.environ.get("CRM_DSN", "postgresql://crm:crm@127.0.0.1:55436/crm")
 
 SOURCES = {"billing": (BILLING_DSN, "refunds"), "ledger": (LEDGER_DSN, "credits")}
+CONTROL_DSN = os.environ.get(
+    "CONTROL_DSN", "postgresql://control:control@127.0.0.1:55435/control"
+)
 
 
 class FindingType(Enum):
@@ -43,6 +46,11 @@ class FindingType(Enum):
     PROJECTION_DRIFT = "PROJECTION_DRIFT"
     DUPLICATE_IDEMPOTENCY_KEY = "DUPLICATE_IDEMPOTENCY_KEY"
     ORPHANED_APPLIED_EVENT = "ORPHANED_APPLIED_EVENT"
+    # A hold that lapsed AFTER its action had already landed. The control
+    # service cannot detect this: it cannot read the effect stores, so it
+    # cannot know whether a lapsing hold's action was spent. Only something
+    # with visibility across both can, which is what this worker is.
+    SPENT_EXPIRED_HOLD = "SPENT_EXPIRED_HOLD"
 
 
 @dataclass(frozen=True)
@@ -164,10 +172,49 @@ def _check_orphans(case_id: str) -> list[Finding]:
     return findings
 
 
+def _check_spent_expired_holds(case_id: str) -> list[Finding]:
+    """Holds reclaimed by the reaper whose action had already landed.
+
+    The expiry control has no safe default on its own. Freeing a lapsed hold
+    whose money moved allows an over-spend (ACL-F18); refusing to free it leaves
+    budget stuck (ACL-F16). The control service can only choose which of the two
+    it has, because it cannot see the effect stores.
+
+    Detecting it needs exactly the cross-service read this worker performs -- the
+    capability the lab argues every aggregate invariant requires.
+    """
+    findings = []
+    expired = _query(
+        CONTROL_DSN,
+        "SELECT idempotency_key, amount FROM reservations "
+        "WHERE case_id = %s AND state = 'EXPIRED'",
+        (case_id,),
+    )
+    for key, amount in expired:
+        for service, (dsn, table) in SOURCES.items():
+            landed = _query(
+                dsn,
+                f"SELECT 1 FROM {table} WHERE idempotency_key = %s "
+                "AND state IN ('COMMITTED', 'SETTLED')",
+                (key,),
+            )
+            if landed:
+                findings.append(
+                    Finding(
+                        FindingType.SPENT_EXPIRED_HOLD, service,
+                        f"reservation {key} was expired and its {amount} "
+                        f"{table[:-1]} had already committed; that budget was "
+                        "returned to the ceiling after being spent",
+                    )
+                )
+    return findings
+
+
 def reconcile(case_id: str) -> ReconciliationReport:
     report = ReconciliationReport(case_id=case_id)
     report.findings.extend(_check_lag(case_id))
     report.findings.extend(_check_drift(case_id))
     report.findings.extend(_check_duplicate_keys(case_id))
     report.findings.extend(_check_orphans(case_id))
+    report.findings.extend(_check_spent_expired_holds(case_id))
     return report

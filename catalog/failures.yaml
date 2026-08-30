@@ -468,3 +468,41 @@ failures:
       Approving $600 is not approving $900, and approving case c1 is not
       approving c2. Without binding, the first approval a system ever issues
       authorises every action after it.
+
+  - id: ACL-F18
+    name: Expiry returns budget that was already spent
+    family: crash-recovery
+    invariant_class: bounded-time
+    symptom: >-
+      A later agent legitimately spends budget a crashed agent had already
+      spent, and every reservation looks individually correct.
+    mechanism: >-
+      An agent reserves, commits its effect, and dies before committing the
+      hold. The money has moved and the reservation is still HELD, so the reaper
+      reclaims it and returns spent budget to the ceiling.
+    status: reproduced
+    verified_by:
+      - test_the_reaper_frees_budget_that_was_already_spent
+      - test_a_second_agent_can_then_overspend_the_ceiling
+      - test_the_control_service_alone_cannot_detect_this
+    schedules: []
+    reproduce: pytest tests/integration/test_crash_after_effect.py -q
+    monitoring_shows: >-
+      A hold lapsed, budget returned, a later request fitted. Every step is the
+      control behaving exactly as designed.
+    control: >-
+      Detection, not prevention. A reconciler with visibility across the control
+      service and the effect stores reports a hold that expired after its action
+      had landed.
+    control_verified_by:
+      - test_the_reconciler_reports_the_spent_expired_hold
+      - test_a_normally_expired_hold_is_not_reported
+      - test_a_live_hold_whose_effect_landed_is_not_reported
+    notes: >-
+      The control from ACL-F16 causes this one. Expiry has no safe default
+      inside the control service: freeing a lapsed hold whose money moved
+      permits an over-spend, and refusing to free it leaves budget stuck. The
+      service can only choose which failure it has, because it cannot read the
+      effect stores. Eliminating both requires exactly the cross-service
+      visibility this lab argues every aggregate invariant needs -- so the
+      remedy is the thesis applied to the fix for the thesis.

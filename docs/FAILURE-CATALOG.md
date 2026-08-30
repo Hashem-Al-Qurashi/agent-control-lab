@@ -20,11 +20,11 @@ tested is worth more than one that does not distinguish.
 
 ## Coverage
 
-**17 entries.**
+**18 entries.**
 
 | Status | Count |
 |---|---:|
-| **Reproduced here** | 17 |
+| **Reproduced here** | 18 |
 
 | Invariant class | Count |
 |---|---:|
@@ -32,7 +32,7 @@ tested is worth more than one that does not distinguish.
 | `cross-service` | 5 |
 | `eventual` | 4 |
 | `hard` | 5 |
-| `bounded-time` | 2 |
+| `bounded-time` | 3 |
 
 ## Index
 
@@ -55,6 +55,7 @@ tested is worth more than one that does not distinguish.
 | [`ACL-F15`](#acl-f15) | An approval outliving the decision it was granted for | `bounded-time` | **Reproduced here** |
 | [`ACL-F16`](#acl-f16) | An abandoned hold refuses an action the ceiling permits | `bounded-time` | **Reproduced here** |
 | [`ACL-F17`](#acl-f17) | An unbound approval acting as a master key | `hard` | **Reproduced here** |
+| [`ACL-F18`](#acl-f18) | Expiry returns budget that was already spent | `bounded-time` | **Reproduced here** |
 
 ---
 
@@ -541,3 +542,31 @@ pytest tests/unit/test_approvals.py -q
 **Control verified by:** `test_a_grant_authorises_less_than_it_approved`
 
 **Note.** Approving $600 is not approving $900, and approving case c1 is not approving c2. Without binding, the first approval a system ever issues authorises every action after it.
+
+---
+
+## ACL-F18
+
+### Expiry returns budget that was already spent
+
+**Family:** `crash-recovery` · **Invariant class:** `bounded-time` · **Status:** **Reproduced here**
+
+**Symptom.** A later agent legitimately spends budget a crashed agent had already spent, and every reservation looks individually correct.
+
+**Mechanism.** An agent reserves, commits its effect, and dies before committing the hold. The money has moved and the reservation is still HELD, so the reaper reclaims it and returns spent budget to the ceiling.
+
+**What monitoring shows.** A hold lapsed, budget returned, a later request fitted. Every step is the control behaving exactly as designed.
+
+**Control.** Detection, not prevention. A reconciler with visibility across the control service and the effect stores reports a hold that expired after its action had landed.
+
+**Reproduce:**
+
+```
+pytest tests/integration/test_crash_after_effect.py -q
+```
+
+**Verified by:** `test_the_reaper_frees_budget_that_was_already_spent`, `test_a_second_agent_can_then_overspend_the_ceiling`, `test_the_control_service_alone_cannot_detect_this`
+
+**Control verified by:** `test_the_reconciler_reports_the_spent_expired_hold`, `test_a_normally_expired_hold_is_not_reported`, `test_a_live_hold_whose_effect_landed_is_not_reported`
+
+**Note.** The control from ACL-F16 causes this one. Expiry has no safe default inside the control service: freeing a lapsed hold whose money moved permits an over-spend, and refusing to free it leaves budget stuck. The service can only choose which failure it has, because it cannot read the effect stores. Eliminating both requires exactly the cross-service visibility this lab argues every aggregate invariant needs -- so the remedy is the thesis applied to the fix for the thesis.
