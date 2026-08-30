@@ -12,6 +12,24 @@ actions stayed in-tenant" describes a system that leaked data.
 
 ---
 
+## Time-to-detect, and the value it cannot take
+
+`oracle/detection.py` measures the delay between a breach landing and
+reconciliation reporting it. For the aggregate breach that delay is **not a
+number** — the reconciler never reports it, because nothing it checks is wrong
+(`ACL-F19`).
+
+**An undetected breach is never rendered as zero.** Averaged into a dashboard,
+"0 seconds to detect" is the most flattering possible figure for the worst
+possible outcome, and a mean detection time computed over cases that were never
+detected is not a measurement of anything. `DetectionResult.summary()` returns
+"never detected", and a test pins that it cannot be rendered as a delay.
+
+The measurement is calibrated against a planted drift the reconciler does catch,
+for the same reason the oracle is calibrated: an instrument never shown to
+detect anything cannot be trusted when it detects nothing.
+
+
 ## Percentile objectives
 
 Measured on this hardware; see `docs/CAPACITY.md` for method and limits.

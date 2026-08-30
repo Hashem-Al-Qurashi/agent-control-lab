@@ -506,3 +506,38 @@ failures:
       effect stores. Eliminating both requires exactly the cross-service
       visibility this lab argues every aggregate invariant needs -- so the
       remedy is the thesis applied to the fix for the thesis.
+
+  - id: ACL-F19
+    name: Reconciliation that will never report the breach
+    family: reconciliation
+    invariant_class: eventual
+    symptom: >-
+      Time-to-detect for the aggregate breach is not long. It is undefined --
+      reconciliation has nothing to say about it, at any point, ever.
+    mechanism: >-
+      The reconciler checks projection lag, projection drift, duplicate
+      idempotency keys and orphaned applied events. Every one of those is
+      correct during the breach, because each service is internally consistent.
+      Nothing it checks is wrong.
+    status: reproduced
+    verified_by:
+      - test_the_aggregate_breach_is_never_detected
+      - test_the_undetected_result_is_reported_as_unbounded_not_zero
+    schedules: [S1]
+    reproduce: pytest tests/integration/test_detection_latency.py -q
+    monitoring_shows: >-
+      A clean reconciliation report, indefinitely.
+    control: >-
+      An invariant check that reads across service boundaries, run separately
+      from operational reconciliation and calibrated before it is trusted.
+    control_verified_by:
+      - test_the_instrument_detects_a_defect_it_should_detect
+      - test_a_clean_case_reports_nothing
+    notes: >-
+      The measurement is calibrated against a planted projection drift the
+      reconciler does catch, because a null result from a broken instrument is
+      indistinguishable from a null result from a real absence -- and this null
+      result is the repository's headline claim. An undetected breach is never
+      rendered as a number: averaged into a dashboard, "0 seconds to detect"
+      would be the most flattering possible figure for the worst possible
+      outcome.
