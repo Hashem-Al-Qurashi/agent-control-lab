@@ -100,7 +100,7 @@ directly, read-only, and imports no service code.
 | **Impact** | Budget occupied by nothing. Later valid actions refused, and **the refusal looks exactly like the control working**, so nobody investigates |
 | **Control** | Release on failure; idempotent; committed holds cannot be released |
 | **Verified by** | `test_a_failed_action_releases_its_hold`, `test_releasing_twice_is_idempotent` |
-| **Residual** | **Real.** A hold survives an agent that dies between reserving and acting. Holds have no expiry — this is trigger 2 in ADR-006 for adopting durable execution |
+| **Residual** | Holds now carry deadlines and are reclaimed inside the reservation lock — `test_a_live_agent_succeeds_once_the_dead_agents_hold_has_lapsed`, `ACL-F16`. **The fix introduced a new residual:** an agent dying between its effect and its hold-commit leaves money spent while the hold is reclaimed, permitting an over-spend (`ACL-F18`). The control service cannot detect that — it cannot read the effect stores — so this is detected by the reconciler rather than prevented |
 
 ### T10 — The oracle perturbs what it measures
 | | |

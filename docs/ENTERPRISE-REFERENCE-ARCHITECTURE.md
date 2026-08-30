@@ -77,6 +77,19 @@ from *"try again later"*, and a refusal that looks like an outage will be retrie
 **Scoping is per invariant, not per service.** The lock is keyed on the case, so
 contention is per-case and unrelated work does not queue (`CAPACITY.md`).
 
+**Authority is bounded in time, not only in amount.** A hold with no deadline
+survives the agent that took it, and the resulting refusal of a legitimate later
+action is indistinguishable from the control working (`ACL-F16`). Deadlines are
+reclaimed inside the lock, so a dead agent's budget is free the moment a live
+agent contends for it.
+
+**And bounding it in time creates a new obligation.** An agent that dies between
+its effect and its hold-commit leaves money spent while the hold is reclaimed
+(`ACL-F18`). No single service can see both facts, so this is *detected* by
+something with cross-service reads rather than prevented locally — which is the
+same conclusion the whole plane rests on, arrived at from the opposite
+direction.
+
 ### What it costs, stated plainly
 
 A serialisation point, and latency that scales linearly with contention on one
@@ -121,7 +134,7 @@ queries so a shared bug cannot cancel out (T10, T11).
 | Kafka | outbox instead | determinism vs broker internals — ADR-010 |
 | LangGraph / any framework | plain Python | no model in the tested arm; known tool-node anomalies — ADR-011 |
 | Temporal / durable execution | not built | triggers named rather than adopted — ADR-006 |
-| OIDC issuer, token rotation | not built | tokens are signed but immortal — ADR-005, T1 |
+| OIDC issuer, key rotation, replay defence | not built | tokens are signed and now expire; what remains absent is rotation, discovery, and a `jti` ledger — so replay INSIDE the validity window is still accepted — ADR-005, T1 |
 | OTel collector, Grafana | spans only | traces are emitted and joined; nothing collects them |
 | LLM arms (C, D) | blocked | credentials — ADR-008 |
 

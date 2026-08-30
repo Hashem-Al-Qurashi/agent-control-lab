@@ -91,7 +91,8 @@ invisible from inside any single service.
 | Effect and its event commit atomically | structural lint, not a behavioural test |
 | Denied actions leave nothing behind | authorization precedes the transaction |
 | Holds are released when their action fails | `test_a_failed_action_releases_its_hold` |
-| A hold survives its agent dying | **absent** — T9, trigger 2 in ADR-006 |
+| A hold survives its agent dying | `test_expiry_is_what_makes_the_budget_recoverable` — deadlines, reclaimed on contention |
+| Reclaiming a hold cannot free money already spent | **absent** — `ACL-F18`. Detected by reconciliation, not prevented, because no single service can see both the hold and the effect |
 
 ## 7. Observability
 

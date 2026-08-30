@@ -48,7 +48,8 @@ speculative — each is a real gap in what exists today:
    actions. Today a crashed agent leaves a held reservation that a reaper must
    clean up, not a workflow that continues.
 2. **Timers.** A hold that must expire after N minutes without an external
-   scheduler. Currently nothing expires holds.
+   scheduler. ~~Currently nothing expires holds.~~ **Fired and closed without
+   Temporal — see the amendment below.**
 3. **Multi-step compensation.** Today one action maps to one hold. A sequence of
    three effects needing ordered rollback is a saga, and hand-rolling one is
    exactly the wrong place to be clever.
@@ -63,3 +64,34 @@ durable execution is unnecessary for action-taking agents.
 A production system with genuine crash recovery, long-running workflows, or
 multi-step compensation should expect the answer to differ — and the three
 triggers above are where to look for it.
+
+---
+
+## Amendment — 2026-08-30: trigger 2 fired, and did not require Temporal
+
+This ADR listed three triggers for revisiting durable execution. The second —
+*"a hold that must expire after N minutes without an external scheduler.
+Currently nothing expires holds"* — has fired. Holds now carry deadlines
+(`ACL-F16`).
+
+**It was resolved without adopting durable execution.** The reaper runs inside
+the reservation lock on the reserve path, so a dead agent's budget is already
+free when a live agent contends for it. That needed a clock, a column and one
+`UPDATE`; measured cost at 100 concurrent agents was about 1% of p50, with the
+exactly-ten-grants guarantee unchanged (`CAPACITY.md`).
+
+So the ADR's conclusion stands, and the trigger text above is now stale: it
+describes a gap that is closed. Read it as history rather than as current state.
+
+**What the trigger got right, and it is worth keeping:** it identified expiry as
+a real missing capability rather than a nice-to-have. What it did not anticipate
+is that closing it would open something worse. An agent dying between its effect
+and its hold-commit leaves money spent while the reaper reclaims the hold, which
+permits an over-spend (`ACL-F18`). Durable execution would genuinely help there
+— a workflow that survives the crash would complete the hold-commit — so trigger
+2 has not so much been retired as **moved**: the case for Temporal is now about
+the crash window between two writes in different services, not about timers.
+
+That is a stronger argument for durable execution than the original trigger was,
+and it is recorded here rather than in a commit message because the next person
+weighing Temporal should see it.

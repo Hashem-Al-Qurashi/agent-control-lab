@@ -117,7 +117,19 @@ reservation.state = HELD  ⇒  its effect is still in flight
 ```
 A leaked hold occupies budget nothing spent and refuses legitimate later
 actions — and that refusal **looks exactly like the control working correctly**,
-so nobody investigates. Enforced by release-on-failure.
+so nobody investigates.
+
+Enforced two ways: release-on-failure for the paths that fail, and a deadline
+plus a reaper for the agent that simply never returns (`ACL-F16`). The reaper
+runs inside the reservation lock, so a dead agent's budget is already free when
+a live agent contends for it rather than after some interval.
+
+**And the enforcement introduced its own failure.** An agent dying between its
+effect and its hold-commit leaves money spent while the hold is reclaimed, so
+the reaper returns budget that was genuinely used (`ACL-F18`). There is no fix
+inside the control service — it cannot see the effect stores — which makes this
+the clearest example in the catalogue of a bounded-time control needing exactly
+the cross-service visibility this document argues for.
 
 ### R2 — Committed holds are irreversible *(hard)*
 ```
