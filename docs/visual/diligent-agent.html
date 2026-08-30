@@ -247,8 +247,8 @@
   <div class="scenarios" role="group" aria-label="Scenario"></div>
 
   <div class="instrument">
-    <div class="ruler" role="tablist" aria-label="Steps"></div>
-    <div class="stage">
+    <div class="ruler" role="group" aria-label="Schedule steps"></div>
+    <div class="stage" aria-live="polite" aria-atomic="false">
       <div class="lane" id="laneA"></div>
       <div class="lane" id="laneB"></div>
       <div class="lane truth" id="laneT"></div>
@@ -266,7 +266,7 @@
       <h2>What the monitoring said</h2>
       <p id="sigNote"></p>
     </div>
-    <div class="sig-grid" id="sigGrid"></div>
+    <div class="sig-grid" id="sigGrid" aria-live="polite"></div>
   </section>
 
   <section class="evidence">
@@ -432,6 +432,9 @@
       const t=document.createElement("button");
       t.className="tick"; t.type="button";
       t.dataset.state = n<i?"done":(n===i?"now":"todo");
+      t.setAttribute("aria-current", n===i ? "step" : "false");
+      t.setAttribute("aria-label",
+        `Step ${n}: ${step.who==="—"?"setup":step.who+" "+step.label}`);
       t.innerHTML=`<span class="tick-n">${String(n).padStart(2,"0")}</span><span class="tick-who">${step.who==="—"?"setup":step.who+" "+step.label}</span>`;
       t.addEventListener("click",()=>{ i=n; render(); });
       ruler.appendChild(t);
