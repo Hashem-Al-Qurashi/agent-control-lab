@@ -101,6 +101,12 @@ def test_the_assessment_pdf_builder_points_at_a_real_source():
     in the repo looking current while `make assessment-pdf` failed -- and a stale
     PDF is worse than a missing one, because it still gets sent.
     """
+    # The renderer pulls in weasyprint, which needs system libraries (pango,
+    # cairo) that CI has no reason to install for a locally-produced artifact.
+    # Skipping keeps the PDF a local deliverable instead of a pipeline
+    # dependency -- and this test existed for weeks quietly failing CI, because
+    # it was added without ever running CI.
+    pytest.importorskip("weasyprint", reason="PDF toolchain is local-only")
     from tools.build_assessment_pdf import OUTPUT, SOURCE
 
     assert SOURCE.exists(), f"the PDF generator reads {SOURCE}, which is gone"
@@ -110,6 +116,7 @@ def test_the_assessment_pdf_builder_points_at_a_real_source():
 def test_the_assessment_pdf_is_not_older_than_its_source():
     """Catches the edit-the-markdown-forget-the-PDF case in a checkout that has
     real mtimes. Skipped where git has flattened them (a fresh clone)."""
+    pytest.importorskip("weasyprint", reason="PDF toolchain is local-only")
     from tools.build_assessment_pdf import OUTPUT, SOURCE
 
     if abs(OUTPUT.stat().st_mtime - SOURCE.stat().st_mtime) < 2:
