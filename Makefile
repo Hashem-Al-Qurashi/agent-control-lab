@@ -83,7 +83,13 @@ observability:
 	@echo "    OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4317 make reproduce SCHEDULE=S1"
 
 observability-down:
-	$(COMPOSE) --profile observability down -v
+	# Named services, NOT `down`. `docker compose --profile observability down`
+	# tears down the whole project -- including all five databases -- because a
+	# profile filters what starts, not what stops. A target called
+	# observability-down that silently stops the databases is a trap, and it
+	# caught me: the next test run failed with "connection refused" on every
+	# suite that needs Postgres.
+	$(COMPOSE) rm -sf tempo grafana
 
 assessment-pdf:
 	$(PY) tools/build_assessment_pdf.py
