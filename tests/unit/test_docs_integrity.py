@@ -14,8 +14,6 @@ import re
 
 import pytest
 
-from conftest import _scan_declared_schedules
-
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs"
 
@@ -75,21 +73,21 @@ def test_every_adr_referenced_by_a_doc_exists():
             assert ref in numbers, f"{doc.name} references ADR-{ref}, which does not exist"
 
 
-def test_reproduce_commands_name_real_schedules():
+def test_reproduce_commands_name_real_schedules(declared_schedules):
     """A README instruction that cannot be run is worse than no instruction."""
     for doc in _all_docs():
         for schedule in re.findall(r"make reproduce SCHEDULE=(\S+)", doc.read_text()):
-            assert schedule in _scan_declared_schedules(), (
+            assert schedule in declared_schedules, (
                 f"{doc.name} tells the reader to run SCHEDULE={schedule}, "
                 "which does not exist"
             )
 
 
-def test_results_report_covers_every_declared_schedule():
+def test_results_report_covers_every_declared_schedule(declared_schedules):
     """A schedule absent from the report is one nobody is reading the verdict of."""
     generator = (REPO / "tests" / "schedules" / "test_results_report.py").read_text()
     covered = set(re.findall(r'\("(\w+)", Verdict\.', generator))
-    missing = sorted(_scan_declared_schedules() - covered)
+    missing = sorted(declared_schedules - covered)
 
     assert not missing, f"schedules missing from the results report: {missing}"
 
