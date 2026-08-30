@@ -9,17 +9,15 @@ caught a planted violation and passed a planted safe state is unproven
 instrumentation, and every verdict below would inherit that doubt.
 """
 
-import os
 import pathlib
 import signal
 import socket
-import subprocess
-import sys
 import time
 
 import httpx
 import pytest
 
+from libs.servicelab import spawn_service, stop_all
 from libs.procguard import (
     ProcessOwnership,
     parent_map,
@@ -60,30 +58,19 @@ def _wait_for(url: str, headers=None, timeout=45.0) -> None:
 OWNERSHIP = ProcessOwnership()
 
 
-def _spawn(module: str, port: int, env_extra: dict, workers: int) -> subprocess.Popen:
-    env = {**os.environ, "PYTHONPATH": str(REPO), **env_extra}
-    proc = subprocess.Popen(
-        [
-            sys.executable, "-m", "uvicorn", module,
-            "--host", "127.0.0.1", "--port", str(port),
-            "--workers", str(workers), "--log-level", "error",
-        ],
-        cwd=REPO, env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    OWNERSHIP.claim(proc.pid)
-    return proc
+def _spawn(module, port, env_extra, workers=4):
+    """Thin wrapper over the shared spawner, adding ownership tracking.
+
+    The lifecycle itself lives in libs/servicelab.py because demo/harness.py
+    needs the same thing, and the copy it once had reintroduced two bugs this
+    file had already solved.
+    """
+    return spawn_service(module, port, env_extra, workers, on_spawn=OWNERSHIP.claim)
 
 
 def _stop(procs) -> None:
     """Terminate services and stop vouching for their pids."""
-    for proc in procs:
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:  # pragma: no cover
-            proc.kill()
-        OWNERSHIP.release(proc.pid)
+    stop_all(procs, on_stop=OWNERSHIP.release)
 
 
 def _assert_no_orphaned_services() -> None:

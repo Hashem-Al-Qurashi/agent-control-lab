@@ -95,13 +95,16 @@ def test_the_harness_leaves_nothing_running_when_startup_fails():
     before = sp.run(["pgrep", "-f", r"uvicorn apps\."],
                     capture_output=True, text=True).stdout.split()
 
-    original = harness._wait_plain
-    harness._wait_plain = _explode
+    # Patch the name the code actually calls. An earlier version patched an
+    # alias that nothing invoked, so the "failure" never happened and the test
+    # was asserting cleanup of a run that had succeeded.
+    original = harness.wait_for
+    harness.wait_for = _explode
     try:
         with pytest.raises(RuntimeError, match="simulated startup failure"):
             harness.run_s1()
     finally:
-        harness._wait_plain = original
+        harness.wait_for = original
 
     after = sp.run(["pgrep", "-f", r"uvicorn apps\."],
                    capture_output=True, text=True).stdout.split()
