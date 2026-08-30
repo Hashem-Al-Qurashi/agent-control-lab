@@ -7,7 +7,7 @@
 PY := python3
 COMPOSE := docker compose
 
-.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf catalog test-llm observability observability-down clean
+.PHONY: help up down migrate test unit integration schedules reproduce determinism calibrate manifest assessment-pdf catalog demo test-llm observability observability-down clean
 
 help:
 	@echo "up          bring up the three databases"
@@ -22,6 +22,7 @@ help:
 	@echo "manifest    print the run manifest (isolation levels, topology)"
 	@echo "assessment-pdf  rebuild the client-facing assessment PDF"
 	@echo "observability   start Tempo + Grafana (http://127.0.0.1:3001)"
+	@echo "demo            the live breach: S1 in ~30s, three green signals, red verdict"
 	@echo "catalog         regenerate docs/FAILURE-CATALOG.md from catalog/failures.yaml"
 	@echo "test-llm        run the live model arms (needs DEEPSEEK_API_KEY)"
 
@@ -85,6 +86,9 @@ calibrate: migrate
 manifest: migrate
 	$(PY) -c "import json; from oracle.manifest import build_manifest; \
 	print(json.dumps(build_manifest(), indent=2))"
+
+demo:
+	@$(PY) demo/run.py
 
 catalog:
 	$(PY) catalog/render.py
