@@ -165,3 +165,55 @@ next step is instrumenting the projector's emit path independently of
 `release_order`, to establish whether the checkpoint was **never emitted** or
 **emitted and unrecorded**. Those are different defects and nothing here
 currently distinguishes them.
+
+
+---
+
+## Update — 2026-08-30 (fifth): NEVER EMITTED, established from source
+
+The fourth update said the next step was instrumenting the projector's emit path
+to decide between *never emitted* and *emitted but unrecorded*. **The source
+answers it without instrumentation.**
+
+`apps/crm/projector.py:90` fires `checkpoint("crm.before_apply_event")` **inside**
+`for event in source.unapplied()`. An empty set means the checkpoint is never
+reached. And the coordinator records a release synchronously, in memory, at the
+moment it grants it — there is no path where the checkpoint fires and fails to
+be recorded.
+
+So the answer is **NEVER EMITTED**, and the emitted-but-unrecorded branch does
+not exist. Half of the question this ADR was carrying was unanswerable because
+it described an impossible state.
+
+### The remaining question, now precise
+
+The projector's own source comment, written for `before_poll`, already describes
+the mechanism:
+
+> *"on a faster one it polls early, finds nothing, exits, and the declared
+> checkpoints never fire."*
+
+So the live question is no longer "was it lost?" but:
+
+> **Why is `unapplied()` empty at the moment the projector polls, in a
+> multi-schedule run, when it is never empty in an isolated one?**
+
+Candidates, none yet tested: the event is not yet visible to the projector's
+transaction when it polls; a previous schedule's projector consumed it; or the
+row was removed between the agent's commit and the poll.
+
+### Why nothing is implemented
+
+Same reason as the fourth update, and this is the third time the pre-flight
+reachability check has stopped work in this project. A guard distinguishing
+"lost record" from "never executed" would be dead code: the lost-record state
+cannot occur. The honest improvement — reporting that a projector checkpoint is
+missing *and* the unapplied set was empty — requires knowing the set size at
+poll time, which is not currently captured anywhere.
+
+### Status
+
+Open, and materially narrower than at any previous point. Not a mystery about
+where a record went: the checkpoint was never emitted, and the question is why
+its precondition was unmet. That is a smaller and better-posed problem than this
+ADR has had since it was written.
