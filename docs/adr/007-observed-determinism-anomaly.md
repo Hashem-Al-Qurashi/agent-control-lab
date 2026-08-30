@@ -266,3 +266,75 @@ kind of dependency that was invisible while the anomaly was unexplained.
 **Status stays OPEN**, with a materially better hypothesis than it has had at any
 point: reproducible under active database concurrency, absent without it,
 mechanism untraced.
+
+---
+
+## Update — 2026-08-30 (fifth): the diff, at last — and it retracts the update above
+
+The divergence diff has finally been captured, and it says something different
+from what the previous update concluded. **That update overclaimed and is
+retracted.**
+
+Deliberate reproduction: a load process writing to Billing and truncating
+Billing and Ledger every forty writes, while 100 replays of each schedule ran.
+All five failed. The captured diff for `P0`, replay 54 against replay 0:
+
+```
+replay 0:  verdict CLEAN, committed_total 600.00,
+           release_order [8 checkpoints, in declared order],
+           decision_log [('1','A','billing',None,'COMMITTED','600.00')], parked []
+
+replay 54: verdict CLEAN, committed_total 600.00,
+           release_order [8 checkpoints, IDENTICAL],
+           decision_log [], parked []
+```
+
+pytest's own summary: **"Omitting 4 identical items"**. Verdict, committed total,
+`release_order` and parked waiters matched exactly. `P1` shows the same shape.
+
+### What that means
+
+**The schedule replayed identically.** `release_order` is the barrier's own
+record of which actor was released at which checkpoint in what order — the thing
+determinism is actually about — and it was the same every time. The scheduling
+was never nondeterministic in any of these runs.
+
+The only field that differed was `decision_log`, and it differed by being
+**empty**. My load process truncates the tables the fingerprint reads. So the
+"divergence" is my own load generator deleting the evidence between the run and
+the fingerprint read.
+
+### The previous update was wrong, and probably wrong twice
+
+The fourth update claimed the anomaly was "reproduced under active database
+concurrency". That reproduction used the integration suite as the concurrent
+load — and the integration fixtures truncate Billing and Ledger between tests.
+Same mechanism. **That was almost certainly the same artifact**, and I recorded
+it as a reproduction because the failure was satisfying rather than because the
+diff had been examined. The diff had not been captured then either.
+
+### The mechanism, named
+
+> A process truncating these tables between a schedule's run and its fingerprint
+> read empties `decision_log`, and the determinism test reports that as a replay
+> divergence. It is a **fingerprint-stability** problem, not a scheduling one.
+
+This very likely explains the original sighting too: it happened during a
+full-suite run, where other suites truncate the same tables.
+
+### What follows
+
+The determinism claim is **stronger** than this ADR has ever stated, not weaker:
+across 500 replays under hostile concurrent load, the barrier's release order
+never varied once.
+
+What is unsound is the fingerprint, which reads mutable tables another process
+can empty. The fix is to make the fingerprint robust — capture it inside the run,
+or treat an empty `decision_log` as an aborted sample rather than a divergence —
+and that has not been done.
+
+**Status: still OPEN**, but for a different and much smaller reason than when
+this ADR was written. Not "scheduling may be nondeterministic" — the evidence now
+says it is not. Rather: "the determinism test can report a divergence that is an
+artifact of its own measurement." An instrument problem, in an ADR that spent its
+life suspecting the system.

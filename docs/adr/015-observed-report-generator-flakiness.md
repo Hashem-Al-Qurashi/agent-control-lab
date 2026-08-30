@@ -74,3 +74,26 @@ with two presentations. ADR-007'''s reproduction supports that, and points at th
 same place: whatever active database concurrency does to checkpoint ordering.
 
 Still open, and now more likely to close together than separately.
+
+
+---
+
+## Update — 2026-08-30 (second): the shared cause is truncation, not concurrency
+
+ADR-007'''s captured diff identified the mechanism behind its divergence: a
+process truncating the tables between a run and its fingerprint read empties
+decision_log, which the determinism test reports as a divergence. The barrier'''s
+release order was identical throughout.
+
+This ADR'''s symptom is the sibling of that. The report generator truncates all
+four databases **between** schedules, and its failures are always a projector'''s
+final checkpoint appearing not to have run. Both are the same class: a
+measurement reading mutable state that something else has cleared, reported as a
+property of the system under test.
+
+The one-defect hypothesis therefore holds, with the cause named more precisely
+than concurrency: **truncation racing a read that is not part of the run it
+describes.**
+
+Still open, and now with a concrete thing to fix in both places rather than a
+mystery to reproduce.
