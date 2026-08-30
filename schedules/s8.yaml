@@ -1,0 +1,49 @@
+# S8 -- an abandoned hold refuses an action the ceiling permits. MUST BE CLEAN,
+# and the clean verdict is the point.
+#
+# The failure with the opposite sign. Every other breach here spends money that
+# was not authorised; this one refuses money that was.
+#
+# A reserves 600 and abandons -- no commit, no release. Nothing is ever spent,
+# so the true aggregate is zero and B's 500 is comfortably inside the 1000
+# ceiling. B is refused anyway, by budget occupied by nothing.
+#
+# The dangerous property is that the refusal is CORRECT-LOOKING: a 409 from the
+# coordination authority is exactly what a legitimate refusal looks like, so
+# nobody investigates. THREAT-MODEL.md T9.
+#
+# The oracle returns CLEAN because it asks whether too much was spent. Too
+# little is invisible to it -- which is why this failure needs its own
+# detection rather than a stricter version of the existing one.
+
+schedule_id: S8
+authorized_compensation: "1000.00"
+timeout_seconds: 30.0
+lease_ttl_seconds: 30.0
+use_reservations: true
+
+actors:
+  - id: A
+    action: refund
+    amount: "600.00"
+    idempotency_key: s8-a
+    # Models an agent that dies between reserving and acting. A hard crash is
+    # S9's subject; for budget purposes the two are identical, and abandonment
+    # is the honest thing to script.
+    abandon_after_reserve: true
+  - id: B
+    action: credit
+    amount: "500.00"
+    idempotency_key: s8-b
+
+expect:
+  verdict: CLEAN
+
+steps:
+  - [A, agent.before_reads]
+  - [A, agent.after_reads_before_act]
+  - [A, agent.before_reserve]
+  # A stops here. It holds 600 and never returns.
+  - [B, agent.before_reads]
+  - [B, agent.after_reads_before_act]
+  - [B, agent.before_reserve]

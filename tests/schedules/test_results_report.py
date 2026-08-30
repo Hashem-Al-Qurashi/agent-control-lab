@@ -40,6 +40,7 @@ EXPECTED = [
     ("S4", Verdict.CLEAN, "Reversed apply order. Rules out ordering as the cause.", False),
     ("S5", Verdict.CLEAN, "At-least-once redelivery. The projection must not inflate.", False),
     ("S6", Verdict.CLEAN, "Above-threshold without approval. Authorization is not decorative.", True),
+    ("S8", Verdict.CLEAN, "Abandoned hold refuses a permitted action. CLEAN is the problem: the oracle asks whether too much was spent, not too little.", False),
 ]
 
 

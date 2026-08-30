@@ -20,21 +20,19 @@ tested is worth more than one that does not distinguish.
 
 ## Coverage
 
-**14 entries.**
+**17 entries.**
 
 | Status | Count |
 |---|---:|
-| **Reproduced here** | 14 |
+| **Reproduced here** | 17 |
 
 | Invariant class | Count |
 |---|---:|
 | `local` | 1 |
 | `cross-service` | 5 |
 | `eventual` | 4 |
-| `hard` | 4 |
-| `bounded-time` | 0 |
-
-> **Incomplete by its own taxonomy.** `INVARIANT-CATALOG.md` names five classes and this catalogue demonstrates 4: `bounded-time` is named and not yet shown breaking. Stated here rather than left for a reader to notice.
+| `hard` | 5 |
+| `bounded-time` | 2 |
 
 ## Index
 
@@ -54,6 +52,9 @@ tested is worth more than one that does not distinguish.
 | [`ACL-F12`](#acl-f12) | Aggregate exactness under contention | `cross-service` | **Reproduced here** |
 | [`ACL-F13`](#acl-f13) | A model-driven agent breaches identically | `cross-service` | **Reproduced here** |
 | [`ACL-F14`](#acl-f14) | A breach invisible to every health signal | `eventual` | **Reproduced here** |
+| [`ACL-F15`](#acl-f15) | An approval outliving the decision it was granted for | `bounded-time` | **Reproduced here** |
+| [`ACL-F16`](#acl-f16) | An abandoned hold refuses an action the ceiling permits | `bounded-time` | **Reproduced here** |
+| [`ACL-F17`](#acl-f17) | An unbound approval acting as a master key | `hard` | **Reproduced here** |
 
 ---
 
@@ -454,3 +455,89 @@ make reproduce SCHEDULE=S1
 **Schedules:** `S1`, `S3`
 
 **Note.** The reason "add more observability" does not address this class. Measured, not asserted — the reconciler is genuinely clean during the breach.
+
+---
+
+## ACL-F15
+
+### An approval outliving the decision it was granted for
+
+**Family:** `approval` · **Invariant class:** `bounded-time` · **Status:** **Reproduced here**
+
+**Symptom.** An agent acts on authority a human granted much earlier, for a decision that has since moved on.
+
+**Mechanism.** Approval is carried as a session scope, so it lives as long as the token. A human approving one action is not approving whatever that agent does for the rest of the hour, but nothing in the check distinguishes those.
+
+**What monitoring shows.** An authorised action by an authenticated actor. Nothing to alert on.
+
+**Control.** A grant carrying its own validity window, revalidated at execution rather than only at decision, and refused outright when it carries no window.
+
+**Reproduce:**
+
+```
+pytest tests/integration/test_approval_expiry.py tests/unit/test_approvals.py -q
+```
+
+**Verified by:** `test_a_scope_approval_never_expires_within_the_session`, `test_a_grant_past_its_window_is_refused`
+
+**Control verified by:** `test_the_same_grant_is_refused_once_its_window_closes`, `test_a_grant_without_a_window_is_refused_rather_than_trusted_forever`
+
+**Note.** Refusing a grant with no deadline is the load-bearing half. Treating "no expiry" as "never expires" is the same defect as verifying a token's exp only when present -- a check that passes by not applying.
+
+---
+
+## ACL-F16
+
+### An abandoned hold refuses an action the ceiling permits
+
+**Family:** `crash-recovery` · **Invariant class:** `bounded-time` · **Status:** **Reproduced here**
+
+**Symptom.** A legitimate action is refused by budget that is occupied by nothing, because an agent reserved and never came back.
+
+**Mechanism.** Holds had no deadline, so a hold survived the agent that took it. Nothing was ever committed, so the true aggregate permitted the later action.
+
+**What monitoring shows.** A 409 from the coordination authority -- exactly what a legitimate refusal looks like. That indistinguishability is why nobody investigates.
+
+**Control.** Deadlines on holds, reclaimed inside the reservation lock so a dead agent's budget is already free when a live agent contends for it.
+
+**Reproduce:**
+
+```
+make reproduce SCHEDULE=S8
+```
+
+**Verified by:** `test_s8_refused_an_action_the_ceiling_permitted`, `test_s8_leaves_a_hold_that_nothing_will_release`, `test_the_refusal_is_indistinguishable_from_a_correct_one`
+
+**Control verified by:** `test_expiry_is_what_makes_the_budget_recoverable`, `test_a_live_agent_succeeds_once_the_dead_agents_hold_has_lapsed`, `test_a_committed_hold_is_never_reaped`
+
+**Schedules:** `S8`
+
+**Note.** The failure with the opposite sign. Everywhere else here money moves when it should not; this is money not moving when it should -- and the oracle returns CLEAN, because it asks whether too much was spent. Too little is invisible to it, which is why this needs its own detection rather than a stricter version of the existing one.
+
+---
+
+## ACL-F17
+
+### An unbound approval acting as a master key
+
+**Family:** `approval` · **Invariant class:** `hard` · **Status:** **Reproduced here**
+
+**Symptom.** One approval authorises actions it was never meant to cover -- a different case, a different action, or a larger amount.
+
+**Mechanism.** The check confirms that an approval exists rather than that this approval covers this action.
+
+**What monitoring shows.** An approved action. The approval is real; it simply belonged to something else.
+
+**Control.** Grants bound to one case, one action and one ceiling.
+
+**Reproduce:**
+
+```
+pytest tests/unit/test_approvals.py -q
+```
+
+**Verified by:** `test_a_grant_for_another_case_does_not_transfer`, `test_a_grant_for_another_action_does_not_transfer`, `test_a_grant_does_not_authorise_more_than_it_approved`
+
+**Control verified by:** `test_a_grant_authorises_less_than_it_approved`
+
+**Note.** Approving $600 is not approving $900, and approving case c1 is not approving c2. Without binding, the first approval a system ever issues authorises every action after it.

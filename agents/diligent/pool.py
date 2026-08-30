@@ -194,6 +194,7 @@ def _run_job(job, outbox: mp.Queue) -> None:
                 idempotency_key=spec["idempotency_key"],
                 authorized_compensation=Decimal(spec["authorized_compensation"]),
                 retry_on_failure=bool(spec.get("retry_on_failure", False)),
+                abandon_after_reserve=bool(spec.get("abandon_after_reserve", False)),
             )
             try:
                 with actor_identity(spec["actor_id"], spec["schedule_id"]), span(

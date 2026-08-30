@@ -81,6 +81,10 @@ class CaseConfig:
     # An explicit, keyed decision -- never automatic. An automatic resend on
     # a non-idempotent endpoint is indistinguishable from two agents racing.
     retry_on_failure: bool = False
+    # Models an agent that dies between reserving and acting: the hold is taken
+    # and never released. S8 exists to show that the resulting refusal of a
+    # LEGITIMATE later action is indistinguishable from the control working.
+    abandon_after_reserve: bool = False
 
 
 def observed_compensation(case_id: str, clients: Clients) -> Decimal:
@@ -141,6 +145,12 @@ def run_case(case_id: str, config: CaseConfig, clients: Clients) -> None:
             config.authorized_compensation,
         )
         if reservation_id is None:
+            return
+
+        if config.abandon_after_reserve:
+            # Return holding the reservation. Not an error path -- an agent that
+            # stopped existing writes no error anywhere, which is precisely why
+            # the leaked budget is invisible.
             return
 
     target = clients.billing if config.action == "refund" else clients.ledger

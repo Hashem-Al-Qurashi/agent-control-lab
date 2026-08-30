@@ -123,21 +123,13 @@ def test_a_reproduced_entry_tells_you_how_to_run_it():
     assert not missing, f"reproduced entries with no command: {missing}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "bounded-time is named in the taxonomy and not yet demonstrated: "
-        "reservations have no expiry and approvals have no validity window. "
-        "Closed by Phase 2; remove this marker then."
-    ),
-)
 def test_all_five_invariant_classes_are_represented():
     """The taxonomy in INVARIANT-CATALOG.md claims five classes.
 
-    Demonstrating four of them is precisely the gap this build exists to close,
-    so it is asserted rather than hoped for. strict=True means this starts
-    failing the moment the gap closes, which is what forces the marker to be
-    removed instead of quietly outliving the problem.
+    It demonstrated four until reservation expiry and bounded approval grants
+    landed. This asserted the gap while it was open, via xfail(strict=True), so
+    the marker had to be removed the moment it closed rather than outliving the
+    problem. All five now.
     """
     present = {e["invariant_class"] for e in _entries()}
 

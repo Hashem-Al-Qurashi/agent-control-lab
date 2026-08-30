@@ -124,6 +124,7 @@ def run_schedule(
                     "amount": actor["amount"],
                     "idempotency_key": actor["idempotency_key"],
                     "retry_on_failure": actor.get("retry_on_failure", False),
+                    "abandon_after_reserve": actor.get("abandon_after_reserve", False),
                     "scopes": actor.get("scopes"),
                     "authorized_compensation": spec["authorized_compensation"],
                     "billing_url": stack["billing"],
