@@ -164,3 +164,46 @@ hygiene, and this ADR no longer presents it as a fix.
 Unchanged: the original diff was never captured, so nothing can be attributed to
 it after the fact. What would close this remains a divergence that recurs with
 its diff captured. Everything else is a story about a thing that happened once.
+
+---
+
+## Update — 2026-08-30 (third): what 20 replays actually establishes
+
+Gate 3's `metacognitive_monitoring` scored the claim "the harness is
+deterministic" at 0.25, and its reasoning included a statistical point this ADR
+had not made:
+
+> 20 replays bounds flake rate only to roughly **<14% at 95% confidence**.
+
+That is correct and it changes how every replay result in this repository should
+be read. Twenty passing replays do **not** establish determinism. They establish
+that the divergence rate is probably under about one in seven. An intermittency
+that fires one run in fifty would pass twenty replays comfortably — and both
+anomalies on record fired approximately that rarely.
+
+So the accurate claim is: **the harness replays identically across the samples
+taken, and the sample is too small to bound a rare intermittency.** Wherever
+this repo says schedules "replay identically", read it with that bound attached.
+
+Raising `ACL_REPLAYS` is the cheap way to tighten it — 200 replays would bound
+the rate near 1.5% — and nobody has run that. It is the obvious next experiment
+and it has not been done.
+
+## A hypothesis worth testing: one defect, two symptoms
+
+The same review noted that ADR-007 and ADR-015 may not be independent.
+
+Both appear only in **multi-schedule runs** and never in isolation. Both involve
+a schedule failing to complete its declared interleaving — ADR-007 as a replay
+divergence, ADR-015 as a `ScheduleNotExecuted` where a projector's final
+checkpoint is never reached. Both were unreproducible on demand. Neither
+survived a clean single-schedule run.
+
+That is a plausible single cause with two presentations, and treating them as two
+separate mysteries may be what has kept both open. It also suggests the fault may
+live in the **aggregate runner** — the fixture and truncation sequence shared
+across schedules — rather than in the barrier or the services, which is a much
+smaller place to look.
+
+Not investigated. Recorded so the next attempt starts from a better hypothesis
+than either ADR had alone.

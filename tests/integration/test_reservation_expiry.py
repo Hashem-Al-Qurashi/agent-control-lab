@@ -233,3 +233,108 @@ def test_a_reservation_without_a_ttl_has_no_deadline():
     with connect() as conn, conn.cursor() as cur:
         cur.execute("SELECT expires_at FROM reservations WHERE idempotency_key = 'k10'")
         assert cur.fetchone()[0] is None
+
+
+# --- expiry racing a live acquisition ------------------------------------
+
+
+def test_the_ceiling_holds_when_expiry_races_live_acquisitions(monkeypatch):
+    """Contended expiry, not idle reclaim.
+
+    Every other expiry test here reclaims a hold while nothing else is
+    happening, and CAPACITY.md's runs all had zero holds to reclaim. Gate 4's
+    decision_framework flagged exactly this gap: expiry racing an in-flight
+    acquisition is the case where a reaper outside the lock would be unsafe,
+    and it was untested.
+
+    A lapsed $600 hold, then twenty agents contending at once for $100 each.
+    The reclaimed budget must be spendable exactly once over: ten grants, not
+    eleven, and not ten-plus-the-reclaimed-six.
+    """
+    import concurrent.futures as cf
+
+    import fastapi
+
+    import apps.control.main as control
+
+    lapsed = FrozenClock()
+    lapsed.advance(seconds=1000)
+    # The hold's deadline is in the past relative to the service's clock.
+    _hold("race", Decimal("600.00"), "race-dead", FrozenClock(), ttl_seconds=10)
+    monkeypatch.setattr(control, "_clock", lapsed)
+
+    def attempt(n):
+        from apps.control.main import ReserveRequest, reserve
+        from libs.barrier.middleware import actor_identity
+
+        with actor_identity(f"A{n}", "RACE"):
+            try:
+                reserve(ReserveRequest(
+                    case_id="race", amount=Decimal("100.00"),
+                    idempotency_key=f"race-{n}",
+                    authorized_compensation=CEILING,
+                ))
+                return True
+            except fastapi.HTTPException:
+                return False
+
+    with cf.ThreadPoolExecutor(max_workers=20) as pool:
+        granted = sum(pool.map(attempt, range(20)))
+
+    assert granted == 10, (
+        f"expected exactly ten grants against the reclaimed ceiling, got {granted}"
+    )
+
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM reservations "
+            "WHERE case_id = 'race' AND state IN ('HELD', 'COMMITTED')"
+        )
+        assert cur.fetchone()[0] == Decimal("1000.00")
+
+
+def test_the_lapsed_hold_is_reaped_exactly_once_under_contention(monkeypatch):
+    """Twenty concurrent reservers each run the reaper inside the lock.
+
+    If reaping were not idempotent under contention the budget would be
+    returned repeatedly -- the over-grant its sibling asserts against, reached
+    from the other direction.
+
+    Self-contained: an earlier version read state left by the previous test,
+    which the autouse truncation removes. A test that depends on another test's
+    leftovers passes or fails on ordering rather than on behaviour.
+    """
+    import concurrent.futures as cf
+
+    import fastapi
+
+    import apps.control.main as control
+
+    lapsed = FrozenClock()
+    lapsed.advance(seconds=1000)
+    _hold("race2", Decimal("600.00"), "race2-dead", FrozenClock(), ttl_seconds=10)
+    monkeypatch.setattr(control, "_clock", lapsed)
+
+    def attempt(n):
+        from apps.control.main import ReserveRequest, reserve
+        from libs.barrier.middleware import actor_identity
+
+        with actor_identity(f"B{n}", "RACE"):
+            try:
+                reserve(ReserveRequest(
+                    case_id="race2", amount=Decimal("100.00"),
+                    idempotency_key=f"race2-{n}",
+                    authorized_compensation=CEILING,
+                ))
+            except fastapi.HTTPException:
+                pass
+
+    with cf.ThreadPoolExecutor(max_workers=20) as pool:
+        list(pool.map(attempt, range(20)))
+
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM reservations "
+            "WHERE case_id = 'race2' AND state = 'EXPIRED'"
+        )
+        assert cur.fetchone()[0] == 1, "the lapsed hold was reaped more than once"
